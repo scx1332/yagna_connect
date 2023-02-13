@@ -12,9 +12,9 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-BEARER_TOKEN = "7fea6f84b3184a2b93f5cacdb585b558"
-SUBNET = "0987"
-API_URL = "http://127.0.0.1:17465"
+BEARER_TOKEN = "12909321636293016160"
+SUBNET = "vpn"
+API_URL = "http://127.0.0.1:74651
 
 
 class PostException(Exception):
