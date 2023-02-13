@@ -6,6 +6,8 @@ services:
       args:
         - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN}
     env_file:
-      - common_config.env
+      - ../common_yagna_config.env
       - prov1.env
     command: ./run_provider.sh
+
+  # Copy configs to prov2, prov3, etc. if you need more providers

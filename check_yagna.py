@@ -26,5 +26,5 @@ def check_me(appkey):
             print(f"   {h} {e.headers[h]}")
 
 
-check_me("")
+check_me("ddd")
 

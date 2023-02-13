@@ -11,7 +11,7 @@ services:
       - YAGNA_APPKEY=${YAGNA_APPKEY}
       - YAGNA_AUTOCONF_ID_SECRET=${YAGNA_AUTOCONF_ID_SECRET}
       - YAGNA_AUTOCONF_APPKEY=${YAGNA_APPKEY}
-      - YA_NET_TYPE=central
+      # - YA_NET_TYPE=central
     command: ./run_requestor.sh
     ports:
       - "3333:3333"
