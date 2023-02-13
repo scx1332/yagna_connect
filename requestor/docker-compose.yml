@@ -1,0 +1,21 @@
+services:
+  yagna_requestor_node:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    volumes:
+      - "./yagna_dir:/root/.local/share/yagna"
+    environment:
+      - GSB_URL=tcp://0.0.0.0:7464
+      - YAGNA_API_URL=http://0.0.0.0:7465
+      - YAGNA_APPKEY=${YAGNA_APPKEY}
+      - YAGNA_AUTOCONF_ID_SECRET=${YAGNA_AUTOCONF_ID_SECRET}
+      - YAGNA_AUTOCONF_APPKEY=${YAGNA_APPKEY}
+      - YA_NET_TYPE=central
+    command: ./run_requestor.sh
+    ports:
+      - "3333:3333"
+      - "7464:7464"
+      - "7465:7465"
+    env_file:
+      - ../common_yagna_config.env
