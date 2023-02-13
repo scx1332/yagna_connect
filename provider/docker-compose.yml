@@ -1,0 +1,11 @@
+services:
+  prov1:
+    build:
+      dockerfile: Dockerfile
+      context: .
+      args:
+        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN}
+    env_file:
+      - common_config.env
+      - prov1.env
+    command: ./run_provider.sh
