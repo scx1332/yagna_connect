@@ -1,0 +1,12 @@
+services:
+  centralnet:
+    build:
+      dockerfile: Dockerfile
+      context: .
+      args:
+        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN}
+    command: ./run_centralnet.sh
+    ports:
+      - "15758:15758"
+
+  # Copy configs to prov2, prov3, etc. if you need more providers

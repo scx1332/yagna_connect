@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-BEARER_TOKEN = "12909321636293016160"
+BEARER_TOKEN = "18920551643277052483"
 
 
 class PostException(Exception):
