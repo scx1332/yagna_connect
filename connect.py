@@ -74,21 +74,7 @@ async def send_request(url, method="get", data=None):
         raise PostException(f"aiohttp.ClientConnectorError: {ex}")
 
 
-demand_template = """
-{
-   "properties":{
-      "golem.com.payment.debit-notes.accept-timeout?": 240,
-      "golem.node.debug.subnet": "%%SUBNET%%",
-      "golem.com.payment.chosen-platform": "erc20-rinkeby-tglm",
-      "golem.com.payment.platform.erc20-rinkeby-tglm.address": "%%SENDER_ADDRESS%%",
-      "golem.srv.comp.expiration": %%EXPIRATION%%
-   },
-   "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound-gateway)(golem.runtime.capabilities=gateway))"
-}
-"""
-
-proposal_template = """
-{
+demand_template = """{
    "properties":{
       "golem.com.payment.debit-notes.accept-timeout?": 240,
       "golem.node.debug.subnet": "%%SUBNET%%",
@@ -120,7 +106,7 @@ async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, pol
 
 async def main():
     me_data = await send_request(f"{API_URL}/me")
-    print(f"Identity information: {me_data}")
+    logger.info(f"Identity information: {me_data}")
     # load json
     next_info = 1
     me_data = json.loads(me_data)
@@ -145,7 +131,7 @@ async def main():
     # Create Demand on Market
     demand_id = await send_request(f"{API_URL}/market-api/v1/demands", method="post", data=demand_json)
     demand_id = demand_id.replace('"', '')
-    print(f"Demands information: {demand_id}")
+    logger.info(f"Demands information: {demand_id}")
 
     poll_event = await get_proposal_event(demand_id)
 
@@ -159,11 +145,14 @@ async def main():
     counter_proposal = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}",
                                           method='post', data=demand_json)
     counter_proposal_id = counter_proposal.replace('"', '')
-    print(f"Counter proposal: {counter_proposal_id}")
-
+    logger.info(f"Counter proposal: {counter_proposal_id}")
     poll_event = await get_proposal_event(demand_id, counter_proposal_id)
+    logger.info(f"Received second proposal event after counter proposal")
 
-    print(f"Proposal: {poll_event['proposal']}")
+    with open(f"tmp/{next_info:03}_proposal_event.json", "w") as f:
+        f.write(json.dumps(poll_event, indent=4))
+        next_info += 1
+
     proposal_id = poll_event['proposal']['proposalId']
     agreement_proposal = {
         "proposalId": proposal_id,
@@ -173,19 +162,16 @@ async def main():
     with open(f"tmp/{next_info:03}_agreement_proposal.json", "w") as f:
         f.write(json.dumps(agreement_proposal, indent=4))
         next_info += 1
-    print(f"Agreement proposal: {agreement_proposal}")
-    create_agreement = await send_request(f"{API_URL}/market-api/v1/agreements", method="post", data=agreement_proposal)
-    print(f"Create agreement: {create_agreement}")
-    agreement_id = create_agreement.replace('"', '')
-    print(f"Agreement id: {agreement_id}")
+    logger.info(f"Agreement proposal: {agreement_proposal}")
+    agreement_response = await send_request(f"{API_URL}/market-api/v1/agreements", method="post", data=agreement_proposal)
+    agreement_id = agreement_response.replace('"', '')
+    logger.info(f"Created agreement id: {agreement_id}")
 
-    confirm_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", method="post",
-                                           data=None)
-    print(f"Confirm agreement: {confirm_agreement}")
+    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", method="post", data=None)
+    logger.info(f"Agreement confirmed")
 
-    wait_for_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait", method="post",
-                                            data=None)
-    print(f"Wait for agreement: {wait_for_agreement}")
+    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait", method="post", data=None)
+    logger.info(f"Agreement approved")
 
 
 if __name__ == "__main__":
