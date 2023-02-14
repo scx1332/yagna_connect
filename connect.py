@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-BEARER_TOKEN = "18920551643277052483"
+BEARER_TOKEN = "71028674574053709964"
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
 

@@ -30,7 +30,12 @@ python gen_env.py
 docker-compose up -d
 ```
 
+Fund payment for requestor
+```
+http://127.0.0.1:3333/payment_fund
+```
+
 Modify docker-compose.yml and common_config.env to your own needs
 
-
+http://127.0.0.1:3333/
 
