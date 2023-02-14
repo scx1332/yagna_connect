@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import shutil
 from datetime import datetime
 
 import aiohttp
@@ -12,8 +13,7 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
-BEARER_TOKEN = "71028674574053709964"
+BEARER_TOKEN = "12909321636293016160"
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
 
@@ -99,110 +99,93 @@ proposal_template = """
    "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound-gateway)(golem.runtime.capabilities=gateway))"
 }
 """
+
+
+async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, poll_timeout=3000):
+    while True:
+        poll = await send_request(
+            f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
+        poll_json = json.loads(poll)
+        for poll_res in poll_json:
+            if poll_res['eventType'] != 'ProposalEvent':
+                continue
+            if prev_proposal_id and "prevProposalId" not in poll_res['proposal']:
+                continue
+            if prev_proposal_id and poll_res['proposal']["prevProposalId"] != prev_proposal_id:
+                continue
+
+            return poll_res
+        await asyncio.sleep(10)
+
+
 async def main():
     me_data = await send_request(f"{API_URL}/me")
     print(f"Identity information: {me_data}")
     # load json
+    next_info = 1
     me_data = json.loads(me_data)
     sender_address = me_data["identity"]
 
-    demand_json = demand_template\
-        .replace("%%EXPIRATION%%", str(int(time.time() * 1000 + 3600 * 1000)))\
-        .replace("%%SENDER_ADDRESS%%", sender_address)\
+    demand_json = demand_template \
+        .replace("%%EXPIRATION%%", str(int(time.time() * 1000 + 3600 * 1000))) \
+        .replace("%%SENDER_ADDRESS%%", sender_address) \
         .replace("%%SUBNET%%", SUBNET)
 
-    if not os.path.exists("tmp"):
-        os.mkdir("tmp")
+    if os.path.exists("tmp"):
+        shutil.rmtree("tmp")
+        await asyncio.sleep(1.0)
+    os.mkdir("tmp")
 
     # validate json
     json.loads(demand_json)
-    print(f"Writting demand to tmp/demand.json")
-    with open("tmp/demand.json", "w") as f:
+    with open(f"tmp/{next_info:03}_demand.json", "w") as f:
         f.write(demand_json)
+    next_info += 1
 
     # Create Demand on Market
-    demand_id = await send_request(f"{API_URL}/market-api/v1/demands", "post", data=demand_json)
+    demand_id = await send_request(f"{API_URL}/market-api/v1/demands", method="post", data=demand_json)
     demand_id = demand_id.replace('"', '')
     print(f"Demands information: {demand_id}")
 
-    while True:
-        max_events = 5
-        poll_timeout = 3000
-        poll = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
-        print(f"Poll result: {poll}")
-        poll_json = json.loads(poll)
+    poll_event = await get_proposal_event(demand_id)
 
-        if len(poll_json) > 0:
-            for poll_res in poll_json:
-                if poll_res['eventType'] != 'ProposalEvent':
-                    continue
-                print(f"Proposal: {poll_res['proposal']}")
-                with open("tmp/event.json", "w") as f:
-                    f.write(json.dumps(poll_res, indent=4))
-                proposal_id = poll_res['proposal']['proposalId']
-                print(f"Proposal id: {proposal_id}")
-                send_proposal = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
-                print(f"Writing proposal to file tmp/proposal.json")
-                send_proposal_json = json.loads(send_proposal)
-                with open("tmp/proposal.json", "w") as f:
-                    f.write(json.dumps(send_proposal_json, indent=4))
+    with open(f"tmp/{next_info:03}_event.json", "w") as f:
+        f.write(json.dumps(poll_event, indent=4))
+        next_info += 1
 
-                if proposal_id != send_proposal_json['proposalId']:
-                    raise Exception("Proposal id mismatch")
-                proposal_id = send_proposal_json['proposalId']
-                print(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
-                counter_proposal = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}", 'post', demand_json)
-                counter_proposal = counter_proposal.replace('"', '')
-                print(f"Counter proposal: {counter_proposal}")
+    proposal = poll_event['proposal']
+    proposal_id = proposal['proposalId']
 
+    counter_proposal = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}",
+                                          method='post', data=demand_json)
+    counter_proposal_id = counter_proposal.replace('"', '')
+    print(f"Counter proposal: {counter_proposal_id}")
 
-                #confirm_agreement = await send_request(f"http://127.0.0.1:7465/market-api/v1/agreements", 'post', send_proposal)
-                #print(f"Confirm agreement: {confirm_agreement}")
+    poll_event = await get_proposal_event(demand_id, counter_proposal_id)
 
-                while True:
-                    max_events = 5
-                    poll_timeout = 3000
-                    print(f"Polling for events: {max_events} {poll_timeout}")
-                    poll = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
-                    poll_json = json.loads(poll)
-                    for poll_res in poll_json:
-                        print(f"Poll result: {json.dumps(poll_res, indent=4)}")
-                        if poll_res['eventType'] != 'ProposalEvent':
-                            continue
-                        if "prevProposalId" not in poll_res['proposal']:
-                            continue
-                        if poll_res['proposal']["prevProposalId"] != counter_proposal:
-                            continue
-                        print(f"Proposal: {poll_res['proposal']}")
-                        proposal_id = poll_res['proposal']['proposalId']
-                        agreement_proposal = {
-                            "proposalId": proposal_id,
-                            "validTo": datetime.now().isoformat() + "Z"
-                        }
-                        agreement_proposal = json.dumps(agreement_proposal)
-                        print(f"Agreement proposal: {agreement_proposal}")
-                        create_agreement = await send_request(f"{API_URL}/market-api/v1/agreements", "post", data=agreement_proposal)
-                        print(f"Create agreement: {create_agreement}")
-                        agreement_id = create_agreement.replace('"', '')
-                        print(f"Agreement id: {agreement_id}")
+    print(f"Proposal: {poll_event['proposal']}")
+    proposal_id = poll_event['proposal']['proposalId']
+    agreement_proposal = {
+        "proposalId": proposal_id,
+        "validTo": datetime.now().isoformat() + "Z"
+    }
+    agreement_proposal = json.dumps(agreement_proposal)
+    with open(f"tmp/{next_info:03}_agreement_proposal.json", "w") as f:
+        f.write(json.dumps(agreement_proposal, indent=4))
+        next_info += 1
+    print(f"Agreement proposal: {agreement_proposal}")
+    create_agreement = await send_request(f"{API_URL}/market-api/v1/agreements", method="post", data=agreement_proposal)
+    print(f"Create agreement: {create_agreement}")
+    agreement_id = create_agreement.replace('"', '')
+    print(f"Agreement id: {agreement_id}")
 
-                        confirm_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", "post", data=None)
-                        print(f"Confirm agreement: {confirm_agreement}")
+    confirm_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", method="post",
+                                           data=None)
+    print(f"Confirm agreement: {confirm_agreement}")
 
-                        wait_for_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait", "post", data=None)
-                        print(f"Wait for agreement: {wait_for_agreement}")
-
-
-                    await asyncio.sleep(10)
-
-    await asyncio.sleep(10)
-
-
-
-
-
-
-
+    wait_for_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait", method="post",
+                                            data=None)
+    print(f"Wait for agreement: {wait_for_agreement}")
 
 
 if __name__ == "__main__":
