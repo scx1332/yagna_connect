@@ -104,7 +104,7 @@ async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, pol
         await asyncio.sleep(10)
 
 
-async def main():
+async def negotiate_aggreement():
     me_data = await send_request(f"{API_URL}/me")
     logger.info(f"Identity information: {me_data}")
     # load json
@@ -163,7 +163,8 @@ async def main():
         f.write(json.dumps(agreement_proposal, indent=4))
         next_info += 1
     logger.info(f"Agreement proposal: {agreement_proposal}")
-    agreement_response = await send_request(f"{API_URL}/market-api/v1/agreements", method="post", data=agreement_proposal)
+    agreement_response = await send_request(f"{API_URL}/market-api/v1/agreements", method="post",
+                                            data=agreement_proposal)
     agreement_id = agreement_response.replace('"', '')
     logger.info(f"Created agreement id: {agreement_id}")
 
@@ -172,6 +173,63 @@ async def main():
 
     await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait", method="post", data=None)
     logger.info(f"Agreement approved")
+    return agreement_id
+
+
+async def main():
+    agreement_id = await negotiate_aggreement()
+    logger.info(f"Agreement id successfully negotiated: {agreement_id}")
+
+    aggreement_resp = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}")
+    aggreement = json.loads(aggreement_resp)
+
+    activity_request = {
+        "agreementId": agreement_id,
+        "requestorPubKey": None
+    }
+    activity = await send_request(f"{API_URL}/activity-api/v1/activity", method="post",
+                                  data=json.dumps(activity_request))
+    activity = json.loads(activity)
+    activity_id = activity['activityId']
+    logger.info(f"Activity id: {activity_id}")
+
+    commands = [
+        {
+            "deploy": {
+                "net": [
+                    {
+                        "id": "844bf7eaf8d44050839a6799ef258fb9",
+                        "ip": "192.168.8.0",
+                        "mask": "255.255.255.0",
+                        "nodeIp": "192.168.8.7"
+                    }
+                ]
+            }
+        },
+        {
+            "start": {}
+        }
+    ]
+
+    str = json.dumps(commands)
+    exec_command = {
+        "text": str
+    }
+    print(json.dumps(exec_command))
+
+    try:
+        activity = await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post",
+                                      data=json.dumps(exec_command))
+    except Exception as e:
+        logger.error(f"Error while sending activity events: {e}")
+    finally:
+        terminate_reason = {
+            "message": "Finishing agreement",
+            "extra": {}
+        }
+        terminate_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/terminate",
+                                                 method="post", data=json.dumps(terminate_reason))
+        logger.info(f"Agreement terminated: {terminate_agreement}")
 
 
 if __name__ == "__main__":
