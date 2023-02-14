@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "yagna-connect"
+version = "0.1.0"
+description = "Example of using low level yagna API for market negotiations"
+authors = ["Witold Dzięcioł <witek@golem.network>, Sieciech Czajka <sieciech.czajka@golem.network>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+aiohttp = "^3.8.3"
+
+[tool.poetry.group.dev.dependencies]
+black = "^22.12.0"
+isort = "^5.11.4"
+mypy = "^0.991"
+pytest = "^7.2.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
