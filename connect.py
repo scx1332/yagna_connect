@@ -86,6 +86,8 @@ demand_template = """{
 }
 """
 
+next_info = 1
+
 
 async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, poll_timeout=3000):
     while True:
@@ -104,14 +106,7 @@ async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, pol
         await asyncio.sleep(10)
 
 
-async def negotiate_aggreement():
-    me_data = await send_request(f"{API_URL}/me")
-    logger.info(f"Identity information: {me_data}")
-    # load json
-    next_info = 1
-    me_data = json.loads(me_data)
-    sender_address = me_data["identity"]
-
+async def negotiate_aggreement(sender_address):
     demand_json = demand_template \
         .replace("%%EXPIRATION%%", str(int(time.time() * 1000 + 3600 * 1000))) \
         .replace("%%SENDER_ADDRESS%%", sender_address) \
@@ -124,6 +119,7 @@ async def negotiate_aggreement():
 
     # validate json
     json.loads(demand_json)
+    global next_info
     with open(f"tmp/{next_info:03}_demand.json", "w") as f:
         f.write(demand_json)
     next_info += 1
@@ -177,7 +173,12 @@ async def negotiate_aggreement():
 
 
 async def main():
-    agreement_id = await negotiate_aggreement()
+    me_data = await send_request(f"{API_URL}/me")
+    logger.info(f"Identity information: {me_data}")
+    me_data = json.loads(me_data)
+    sender_address = me_data["identity"]
+
+    agreement_id = await negotiate_aggreement(sender_address)
     logger.info(f"Agreement id successfully negotiated: {agreement_id}")
 
     aggreement_resp = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}")
@@ -193,33 +194,67 @@ async def main():
     activity_id = activity['activityId']
     logger.info(f"Activity id: {activity_id}")
 
-    commands = [
-        {
-            "deploy": {
-                "net": [
-                    {
-                        "id": "844bf7eaf8d44050839a6799ef258fb9",
-                        "ip": "192.168.8.0",
-                        "mask": "255.255.255.0",
-                        "nodeIp": "192.168.8.7"
-                    }
-                ]
-            }
-        },
-        {
-            "start": {}
-        }
-    ]
 
-    str = json.dumps(commands)
-    exec_command = {
-        "text": str
-    }
-    print(json.dumps(exec_command))
+
 
     try:
-        activity = await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post",
-                                      data=json.dumps(exec_command))
+        new_network = {
+            "ip": "192.168.8.0",
+            "mask": "255.255.255.0",
+            "gateway": None
+        }
+        net_response = await send_request(f"{API_URL}/net-api/v2/vpn/net", method="post", data=json.dumps(new_network))
+        net_response = json.loads(net_response)
+        net_id = net_response["id"]
+        global next_info
+        with open(f"tmp/{next_info:03}_net_response.json", "w") as f:
+            f.write(json.dumps(net_response, indent=4))
+            next_info += 1
+
+        ip_remote = "192.168.8.7"
+        ip_local = "192.168.8.12"
+
+        commands = [
+            {
+                "deploy": {
+                    "net": [
+                        {
+                            "id": net_id,
+                            "ip": net_response["ip"],
+                            "mask": net_response["mask"],
+                            "nodeIp": ip_remote
+                        }
+                    ]
+                }
+            },
+            {
+                "start": {}
+            }
+        ]
+
+        str = json.dumps(commands)
+        exec_command = {
+            "text": str
+        }
+        print(f"Deploying network on provider {net_id}")
+
+        await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post", data=json.dumps(exec_command))
+
+        assign_output = {
+            "id": sender_address,
+            "ip": ip_local
+            }
+        print(f"Assigning output to {net_id}")
+        await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes", method="post", data=json.dumps(assign_output))
+
+        nodes = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes")
+        nodes = json.loads(nodes)
+        print(f"Nodes: {nodes}")
+        url = f'ws://127.0.0.1:7465/net-api/v2/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}';
+        # todo websocket
+        # aiohttp.ClientSession()
+
+
     except Exception as e:
         logger.error(f"Error while sending activity events: {e}")
     finally:
