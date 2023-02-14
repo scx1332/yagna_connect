@@ -14,6 +14,8 @@ logger.setLevel(logging.INFO)
 
 
 BEARER_TOKEN = "18920551643277052483"
+SUBNET = "vpn"
+API_URL = "http://127.0.0.1:7465"
 
 
 class PostException(Exception):
@@ -76,12 +78,12 @@ demand_template = """
 {
    "properties":{
       "golem.com.payment.debit-notes.accept-timeout?": 240,
-      "golem.node.debug.subnet": "vpn",
+      "golem.node.debug.subnet": "%%SUBNET%%",
       "golem.com.payment.chosen-platform": "erc20-rinkeby-tglm",
       "golem.com.payment.platform.erc20-rinkeby-tglm.address": "%%SENDER_ADDRESS%%",
       "golem.srv.comp.expiration": %%EXPIRATION%%
    },
-   "constraints":"(&(golem.node.debug.subnet=vpn)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound-gateway)(golem.runtime.capabilities=net-gateway))"
+   "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound-gateway)(golem.runtime.capabilities=gateway))"
 }
 """
 
@@ -89,16 +91,16 @@ proposal_template = """
 {
    "properties":{
       "golem.com.payment.debit-notes.accept-timeout?": 240,
-      "golem.node.debug.subnet": "vpn",
+      "golem.node.debug.subnet": "%%SUBNET%%",
       "golem.com.payment.chosen-platform": "erc20-rinkeby-tglm",
       "golem.com.payment.platform.erc20-rinkeby-tglm.address": "%%SENDER_ADDRESS%%",
       "golem.srv.comp.expiration": %%EXPIRATION%%
    },
-   "constraints":"(&(golem.node.debug.subnet=vpn)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound-gateway)(golem.runtime.capabilities=net-gateway))"
+   "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound-gateway)(golem.runtime.capabilities=gateway))"
 }
 """
 async def main():
-    me_data = await send_request("http://127.0.0.1:7465/me")
+    me_data = await send_request(f"{API_URL}/me")
     print(f"Identity information: {me_data}")
     # load json
     me_data = json.loads(me_data)
@@ -106,7 +108,8 @@ async def main():
 
     demand_json = demand_template\
         .replace("%%EXPIRATION%%", str(int(time.time() * 1000 + 3600 * 1000)))\
-        .replace("%%SENDER_ADDRESS%%", sender_address)
+        .replace("%%SENDER_ADDRESS%%", sender_address)\
+        .replace("%%SUBNET%%", SUBNET)
 
     if not os.path.exists("tmp"):
         os.mkdir("tmp")
@@ -116,14 +119,16 @@ async def main():
     print(f"Writting demand to tmp/demand.json")
     with open("tmp/demand.json", "w") as f:
         f.write(demand_json)
-    demand_id = await send_request("http://127.0.0.1:7465/market-api/v1/demands", "post", data=demand_json)
+
+    # Create Demand on Market
+    demand_id = await send_request(f"{API_URL}/market-api/v1/demands", "post", data=demand_json)
     demand_id = demand_id.replace('"', '')
     print(f"Demands information: {demand_id}")
 
     while True:
         max_events = 5
         poll_timeout = 3000
-        poll = await send_request(f"http://127.0.0.1:7465/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
+        poll = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
         print(f"Poll result: {poll}")
         poll_json = json.loads(poll)
 
@@ -136,7 +141,7 @@ async def main():
                     f.write(json.dumps(poll_res, indent=4))
                 proposal_id = poll_res['proposal']['proposalId']
                 print(f"Proposal id: {proposal_id}")
-                send_proposal = await send_request(f"http://127.0.0.1:7465/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
+                send_proposal = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
                 print(f"Writing proposal to file tmp/proposal.json")
                 send_proposal_json = json.loads(send_proposal)
                 with open("tmp/proposal.json", "w") as f:
@@ -145,8 +150,8 @@ async def main():
                 if proposal_id != send_proposal_json['proposalId']:
                     raise Exception("Proposal id mismatch")
                 proposal_id = send_proposal_json['proposalId']
-                print(f"http://127.0.0.1:7465/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
-                counter_proposal = await send_request(f"http://127.0.0.1:7465/market-api/v1/demands/{demand_id}/proposals/{proposal_id}", 'post', demand_json)
+                print(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
+                counter_proposal = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}", 'post', demand_json)
                 counter_proposal = counter_proposal.replace('"', '')
                 print(f"Counter proposal: {counter_proposal}")
 
@@ -158,7 +163,7 @@ async def main():
                     max_events = 5
                     poll_timeout = 3000
                     print(f"Polling for events: {max_events} {poll_timeout}")
-                    poll = await send_request(f"http://127.0.0.1:7465/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
+                    poll = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
                     poll_json = json.loads(poll)
                     for poll_res in poll_json:
                         print(f"Poll result: {json.dumps(poll_res, indent=4)}")
@@ -176,15 +181,15 @@ async def main():
                         }
                         agreement_proposal = json.dumps(agreement_proposal)
                         print(f"Agreement proposal: {agreement_proposal}")
-                        create_agreement = await send_request(f"http://127.0.0.1:7465/market-api/v1/agreements", "post", data=agreement_proposal)
+                        create_agreement = await send_request(f"{API_URL}/market-api/v1/agreements", "post", data=agreement_proposal)
                         print(f"Create agreement: {create_agreement}")
                         agreement_id = create_agreement.replace('"', '')
                         print(f"Agreement id: {agreement_id}")
 
-                        confirm_agreement = await send_request(f"http://127.0.0.1:7465/market-api/v1/agreements/{agreement_id}/confirm", "post", data=None)
+                        confirm_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", "post", data=None)
                         print(f"Confirm agreement: {confirm_agreement}")
 
-                        wait_for_agreement = await send_request(f"http://127.0.0.1:7465/market-api/v1/agreements/{agreement_id}/wait", "post", data=None)
+                        wait_for_agreement = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait", "post", data=None)
                         print(f"Wait for agreement: {wait_for_agreement}")
 
 
