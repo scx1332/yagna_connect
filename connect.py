@@ -2,6 +2,7 @@ import asyncio
 import logging
 import shutil
 from datetime import datetime
+import websockets
 
 import aiohttp
 import platform
@@ -16,6 +17,7 @@ logger.setLevel(logging.INFO)
 BEARER_TOKEN = "65742089207217182944"
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
+API_URL_WEBSOCKETS = "ws://127.0.0.1:7465"
 
 
 def string_unescape(s, encoding='utf-8'):
@@ -301,7 +303,20 @@ async def main():
         nodes = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes")
         nodes = json.loads(nodes)
         print(f"Nodes: {nodes}")
-        url = f'ws://127.0.0.1:7465/net-api/v2/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}'
+
+        remote_port = 22
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if 1:
+            async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/tcp/{ip_remote}/50671", extra_headers=[('Authorization', f'Bearer {BEARER_TOKEN}')]) as websocket:
+                print(f"Connected to websocket")
+                while True:
+                    await websocket.send("Hello")
+                    print(f"Sent message")
+                    break
+
         # todo websocket
         # aiohttp.ClientSession()
 

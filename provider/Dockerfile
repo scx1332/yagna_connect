@@ -33,6 +33,7 @@ COPY ya-provider /root/.local/share/ya-provider
 COPY --from=ya-runtime-outbound-gateway /ya-runtime-outbound-gateway/target/release/ya-runtime-outbound-gateway /root/.local/lib/yagna/plugins/ya-runtime-outbound-gateway/ya-runtime-outbound-gateway
 COPY --from=ya-runtime-outbound-gateway /ya-runtime-outbound-gateway/conf/ya-runtime-outbound-gateway.json /root/.local/lib/yagna/plugins/ya-runtime-outbound-gateway.json
 
+COPY *.py .
 COPY *.sh .
 RUN chmod +x *.sh
 
