@@ -199,7 +199,7 @@ async def main():
 
     aggreement_resp = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}")
     aggreement = json.loads(aggreement_resp)
-
+    provider_id = aggreement['offer']['providerId']
     activity_request = {
         "agreementId": agreement_id,
         "requestorPubKey": None
@@ -211,10 +211,11 @@ async def main():
     logger.info(f"Activity id: {activity_id}")
 
     try:
+        ip_remote = "192.168.8.7"
         new_network = {
-            "ip": "192.168.8.0",
+            "ip": "192.168.8.0/24",
             "mask": "255.255.255.0",
-            "gateway": None
+            "gateway": ip_remote
         }
         net_response = await send_request(f"{API_URL}/net-api/v2/vpn/net", method="post", data=json.dumps(new_network))
         net_response = json.loads(net_response)
@@ -224,8 +225,11 @@ async def main():
             f.write(json.dumps(net_response, indent=4))
             next_info += 1
 
-        ip_remote = "192.168.8.7"
-        ip_local = "192.168.8.12"
+        ip_addr_resp = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/addresses")
+        ip_local = json.loads(ip_addr_resp)
+        if ip_local[0]['ip'] != "192.168.8.1/24":
+            print(f"Unexpected local ip {ip_local}")
+        ip_local = "192.168.8.1"
 
         commands = [
             {
@@ -293,8 +297,8 @@ async def main():
 
 
         assign_output = {
-            "id": sender_address,
-            "ip": ip_local
+            "id": provider_id,
+            "ip": ip_remote
         }
         print(f"Assigning output to {net_id}")
         await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes", method="post",
