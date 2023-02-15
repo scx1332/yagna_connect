@@ -1,0 +1,52 @@
+services:
+  centralnet:
+    build:
+      dockerfile: Dockerfile
+      context: ../../centralnet
+      args:
+        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
+    command: ./run_centralnet.sh
+    ports:
+      - "15758:15758"
+  prov1:
+    build:
+      dockerfile: Dockerfile
+      context: ../../provider
+      args:
+        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
+        - YAGNA_GIT_CLONE_CACHE_TOKEN=${YAGNA_GIT_CLONE_CACHE_TOKEN:-1}
+        - YAGNA_INCREMENTAL_BUILD_TOKEN=${YAGNA_INCREMENTAL_BUILD_TOKEN:-1}
+        - YAGNA_BRANCH_OR_TAG=${YAGNA_BRANCH_OR_TAG:-scx1332/vpn}
+        - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
+        - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
+        - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+    env_file:
+      - yagna_config.env
+      - prov1.env
+    command: ./run_provider.sh
+  yagna_requestor_node:
+    build:
+      dockerfile: Dockerfile_FromSource
+      context: ../../requestor
+      args:
+        - YAGNA_GIT_CLONE_CACHE_TOKEN=${YAGNA_GIT_CLONE_CACHE_TOKEN:-1}
+        - YAGNA_INCREMENTAL_BUILD_TOKEN=${YAGNA_INCREMENTAL_BUILD_TOKEN:-1}
+        - YAGNA_BRANCH_OR_TAG=${YAGNA_BRANCH_OR_TAG:-scx1332/vpn}
+        - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
+        - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
+        - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+    volumes:
+      - "./yagna_dir:/root/.local/share/yagna"
+    environment:
+      - GSB_URL=tcp://0.0.0.0:7464
+      - YAGNA_API_URL=http://0.0.0.0:7465
+      - YAGNA_APPKEY=${YAGNA_APPKEY}
+      - YAGNA_AUTOCONF_ID_SECRET=${YAGNA_AUTOCONF_ID_SECRET}
+      - YAGNA_AUTOCONF_APPKEY=${YAGNA_APPKEY}
+    command: ./run_requestor.sh
+    ports:
+      - "3333:3333"
+      - "7464:7464"
+      - "7465:7465"
+    env_file:
+      - yagna_config.env
