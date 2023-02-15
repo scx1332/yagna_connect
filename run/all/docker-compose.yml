@@ -6,14 +6,14 @@ services:
       args:
         - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
     command: ./run_centralnet.sh
-    ports:
-      - "15758:15758"
   prov1:
     build:
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile_FromSource
       context: ../../provider
       args:
         - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
+        - YA_RUNTIME_OUTBOUND_BUILD_TOKEN=${YA_RUNTIME_OUTBOUND_BUILD_TOKEN:-1}
+        - YA_RUNTIME_OUTBOUND_BRANCH=${YA_RUNTIME_OUTBOUND_BRANCH:-scx1332/vpn}
         - YAGNA_GIT_CLONE_CACHE_TOKEN=${YAGNA_GIT_CLONE_CACHE_TOKEN:-1}
         - YAGNA_INCREMENTAL_BUILD_TOKEN=${YAGNA_INCREMENTAL_BUILD_TOKEN:-1}
         - YAGNA_BRANCH_OR_TAG=${YAGNA_BRANCH_OR_TAG:-scx1332/vpn}

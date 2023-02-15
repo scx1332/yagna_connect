@@ -13,9 +13,16 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-BEARER_TOKEN = "12909321636293016160"
+BEARER_TOKEN = "65742089207217182944"
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
+
+
+def string_unescape(s, encoding='utf-8'):
+    return (s.encode('latin1')         # To bytes, required by 'unicode-escape'
+            .decode('unicode-escape') # Perform the actual octal-escaping decode
+            .encode('latin1')         # 1:1 mapping back to bytes
+            .decode(encoding))        # Decode original encoding
 
 
 class PostException(Exception):
@@ -87,6 +94,13 @@ demand_template = """{
 """
 
 next_info = 1
+
+
+def dump_next_info(file_name, text):
+    global next_info
+    with open(f"tmp/{next_info:03}_{file_name}", "w") as f:
+        f.write(text)
+    next_info += 1
 
 
 async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, poll_timeout=3000):
@@ -194,9 +208,6 @@ async def main():
     activity_id = activity['activityId']
     logger.info(f"Activity id: {activity_id}")
 
-
-
-
     try:
         new_network = {
             "ip": "192.168.8.0",
@@ -237,20 +248,60 @@ async def main():
             "text": str
         }
         print(f"Deploying network on provider {net_id}")
+        with open(f"tmp/{next_info:03}_exec_command.json", "w") as f:
+            f.write(json.dumps(commands, indent=4))
+            next_info += 1
 
-        await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post", data=json.dumps(exec_command))
+        response_exec = await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post",
+                                           data=json.dumps(exec_command))
+        response_batch_id = response_exec.replace('"', '')
+        print(f"Exec batch id: {response_batch_id}")
+
+        current_time = time.time()
+        while True:
+            response_output = await send_request(
+                f"{API_URL}/activity-api/v1/activity/{activity_id}/exec/{response_batch_id}")
+            response_exec_json = json.loads(response_output)
+            wait = True
+            for batch in response_exec_json:
+                if batch['isBatchFinished']:
+                    wait = False
+                    break
+            if not wait:
+                print(f"Batch execution finished")
+                break
+            print(f"Waiting for batch to finish")
+            await asyncio.sleep(1)
+            dump_next_info("exec_output.json", json.dumps(response_exec_json, indent=4))
+            if time.time() - current_time > 20:
+                raise Exception("Timeout waiting for batch to finish")
+
+        dump_next_info("exec_output.json", json.dumps(response_exec_json, indent=4))
+
+        for batch in response_exec_json:
+            stdout = batch["stdout"]
+            stderr = batch["stderr"]
+            batch_id = batch["index"]
+            if batch["result"] != "Ok":
+                raise Exception(f"Batch {batch_id} failed")
+
+            dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
+            if stderr:
+                dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
+
 
         assign_output = {
             "id": sender_address,
             "ip": ip_local
-            }
+        }
         print(f"Assigning output to {net_id}")
-        await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes", method="post", data=json.dumps(assign_output))
+        await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes", method="post",
+                           data=json.dumps(assign_output))
 
         nodes = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes")
         nodes = json.loads(nodes)
         print(f"Nodes: {nodes}")
-        url = f'ws://127.0.0.1:7465/net-api/v2/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}';
+        url = f'ws://127.0.0.1:7465/net-api/v2/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}'
         # todo websocket
         # aiohttp.ClientSession()
 

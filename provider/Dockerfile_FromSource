@@ -12,14 +12,22 @@ ARG YAGNA_BUILD_TARGET=x86_64-unknown-linux-musl
 # yagna additional features
 ARG YAGNA_FEATURES=static-openssl
 # change token to bypass docker caching system
-ARG YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=3a826a24-3ada-4c48-bfaa-58d2714ba66e
+ARG YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=3fd595e0-5778-4075-9997-cf87453ef658
+# incremental build
+ARG YA_RUNTIME_OUTBOUND_BUILD_TOKEN=e4710e60-c8ca-443d-9d7a-6962fc9b8442
+# branch
+ARG YA_RUNTIME_OUTBOUND_BRANCH=master
 
 FROM rust as ya-runtime-outbound-gateway
 RUN apt-get update
 RUN apt-get install cmake openssl musl-tools -y
 ARG YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN
-RUN echo ${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch master https://github.com/golemfactory/ya-runtime-outbound-gateway.git ya-runtime-outbound-gateway
+ARG YA_RUNTIME_OUTBOUND_BRANCH
+RUN echo ${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch ${YA_RUNTIME_OUTBOUND_BRANCH} https://github.com/golemfactory/ya-runtime-outbound-gateway.git ya-runtime-outbound-gateway
 WORKDIR /ya-runtime-outbound-gateway
+RUN cargo build --release -p ya-runtime-outbound-gateway
+ARG YA_RUNTIME_OUTBOUND_BUILD_TOKEN
+RUN echo ${YA_RUNTIME_OUTBOUND_BUILD_TOKEN} && git pull
 RUN cargo build --release -p ya-runtime-outbound-gateway
 
 
