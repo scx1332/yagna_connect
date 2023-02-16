@@ -121,37 +121,17 @@ def dump_next_info(file_name, text):
     next_info += 1
 
 
-async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, poll_timeout=3000):
-    while True:
-        poll = await send_request(
-            f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
-        poll_json = json.loads(poll)
-        for poll_res in poll_json:
-            if poll_res['eventType'] != 'ProposalEvent':
-                continue
-            if prev_proposal_id and "prevProposalId" not in poll_res['proposal']:
-                continue
-            if prev_proposal_id and poll_res['proposal']["prevProposalId"] != prev_proposal_id:
-                continue
-
-            return poll_res
-        await asyncio.sleep(10)
-
-
-async def negotiate_agreement(sender_address):
+async def create_demand(sender_address):
     now_datetime = datetime.now(timezone.utc)
     agreement_validity_timedelta = timedelta(minutes=30)
     demand_expiration_datetime = now_datetime + agreement_validity_timedelta
     demand_expiration_timestamp = str(int(demand_expiration_datetime.timestamp() * 1000))
     demand_expiration_formatted = now_datetime.astimezone().isoformat()
-    demand_expiration_formatted_z = demand_expiration_datetime.isoformat().replace("+00:00", "Z")
-    logger.info(f"Setting demand expiration to {demand_expiration_formatted}")
-    logger.info(f"  Formatted for demand (timestamp microseconds): {demand_expiration_timestamp}")
-    logger.info(f"  Formatted for json post (ISO format with Z at the end): {demand_expiration_formatted_z}")
+    logger.info(f"Setting demand expiration to {demand_expiration_formatted} timestamp {demand_expiration_timestamp}")
 
-    demand = json.loads(demand_template \
-                        .replace("%%EXPIRATION%%", demand_expiration_timestamp) \
-                        .replace("%%SENDER_ADDRESS%%", sender_address) \
+    demand = json.loads(demand_template
+                        .replace("%%EXPIRATION%%", demand_expiration_timestamp)
+                        .replace("%%SENDER_ADDRESS%%", sender_address)
                         .replace("%%SUBNET%%", SUBNET))
 
     dump_next_info("demand.json", json.dumps(demand, indent=4))
@@ -294,6 +274,43 @@ async def create_network():
     ip_local = "192.168.8.1"
 
     return net_response, ip_local, ip_remote
+
+
+async def wait_for_batch_finish(activity_id, batch_id):
+    current_time = time.time()
+    while True:
+        # Query batch results until it will be finished.
+        response_output = await send_request(
+            f"{API_URL}/activity-api/v1/activity/{activity_id}/exec/{batch_id}")
+        response_exec_json = json.loads(response_output)
+        wait = True
+        for batch in response_exec_json:
+            if batch['isBatchFinished']:
+                wait = False
+                break
+        if not wait:
+            logger.info(f"Batch execution finished")
+            break
+        logger.info(f"Waiting for batch to finish")
+        await asyncio.sleep(1)
+        dump_next_info("exec_output.json", json.dumps(response_exec_json, indent=4))
+        if time.time() - current_time > 20:
+            raise Exception("Timeout waiting for batch to finish")
+
+    dump_next_info("exec_output.json", json.dumps(response_exec_json, indent=4))
+
+    for batch in response_exec_json:
+        stdout = batch["stdout"]
+        stderr = batch["stderr"]
+        batch_id = batch["index"]
+        if batch["result"] != "Ok":
+            raise Exception(f"Batch {batch_id} failed")
+
+        dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
+        dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
+
+
+
 async def main():
     parser = argparse.ArgumentParser(
         prog='ConnectVPN',
@@ -301,7 +318,6 @@ async def main():
     parser.add_argument('--key')
     global bearer_token
     bearer_token = parser.parse_args().key
-
 
     await prepare_tmp_directory()
 
@@ -341,7 +357,7 @@ async def main():
         (network, local_ip, ip_remote) = await create_network()
         net_id = network["id"]
 
-
+        # check if local IP is assigned as expected to 192.168.8.1
         ip_addr_resp = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/addresses")
         ip_local = json.loads(ip_addr_resp)
         if ip_local[0]['ip'] != "192.168.8.1/24":
@@ -384,36 +400,11 @@ async def main():
         response_batch_id = response_exec.replace('"', '')
         logger.info(f"Exec batch id: {response_batch_id}")
 
-        current_time = time.time()
-        while True:
-            response_output = await send_request(
-                f"{API_URL}/activity-api/v1/activity/{activity_id}/exec/{response_batch_id}")
-            response_exec_json = json.loads(response_output)
-            wait = True
-            for batch in response_exec_json:
-                if batch['isBatchFinished']:
-                    wait = False
-                    break
-            if not wait:
-                logger.info(f"Batch execution finished")
-                break
-            logger.info(f"Waiting for batch to finish")
-            await asyncio.sleep(1)
-            dump_next_info("exec_output.json", json.dumps(response_exec_json, indent=4))
-            if time.time() - current_time > 20:
-                raise Exception("Timeout waiting for batch to finish")
+        # Let's wait until initialization of ExeUnit will be finished.
+        await wait_for_batch_finish(activity_id, response_batch_id)
 
-        dump_next_info("exec_output.json", json.dumps(response_exec_json, indent=4))
-
-        for batch in response_exec_json:
-            stdout = batch["stdout"]
-            stderr = batch["stderr"]
-            batch_id = batch["index"]
-            if batch["result"] != "Ok":
-                raise Exception(f"Batch {batch_id} failed")
-
-            dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
-            dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
+        # To use VPN on our Provider we have to assign IP address to it.
+		
 
         assign_output = {
             "id": provider_id,

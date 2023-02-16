@@ -56,8 +56,8 @@ WORKDIR /yagna
 
 COPY --from=yagna-build /build/yagna /usr/bin
 
-COPY *.py .
-COPY *.sh .
+COPY *.py ./
+COPY *.sh ./
 RUN chmod +x *.sh
 
 

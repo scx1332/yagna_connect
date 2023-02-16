@@ -11,8 +11,8 @@ RUN wget https://github.com/golemfactory/yagna/releases/download/v0.12.0/golem-r
 
 RUN mv golem-binaries/yagna /usr/bin
 
-COPY *.py .
-COPY *.sh .
+COPY *.py ./
+COPY *.sh ./
 RUN chmod +x *.sh
 
 
