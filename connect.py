@@ -317,7 +317,8 @@ async def wait_for_batch_finish(activity_id, batch_id):
         if batch["result"] != "Ok":
             raise Exception(f"Batch {batch_id} failed")
 
-        dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
+        if stdout:
+            dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
         if stderr:
             dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
 
