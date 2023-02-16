@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import shutil
+import sys
+import traceback
 from datetime import datetime, timedelta, timezone
 import websockets
 
@@ -14,17 +16,23 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-BEARER_TOKEN = "66038892407434930151"
+BEARER_TOKEN = "60385131821230470108"
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
 API_URL_WEBSOCKETS = "ws://127.0.0.1:7465"
 
 
 def string_unescape(s, encoding='utf-8'):
-    return (s.encode('latin1')  # To bytes, required by 'unicode-escape'
-            .decode('unicode-escape')  # Perform the actual octal-escaping decode
-            .encode('latin1')  # 1:1 mapping back to bytes
-            .decode(encoding))  # Decode original encoding
+    try:
+        if s is None:
+            return ""
+        return (s.encode('latin1')  # To bytes, required by 'unicode-escape'
+                .decode('unicode-escape')  # Perform the actual octal-escaping decode
+                .encode('latin1')  # 1:1 mapping back to bytes
+                .decode(encoding))  # Decode original encoding
+    except Exception as ex:
+        logger.error(f"Error decoding string {s}: {ex}")
+        return s
 
 
 class PostException(Exception):
@@ -302,7 +310,7 @@ async def wait_for_batch_finish(activity_id, batch_id):
 
         if stdout:
             dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
-        if stderr:
+
             dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
 
 
@@ -415,6 +423,7 @@ async def main():
         # aiohttp.ClientSession()
 
     except Exception as e:
+        traceback.print_exc(file=sys.stderr)
         logger.error(f"Error while sending activity events: {e}")
     finally:
         # We should always free Provider, by terminating the Agreement.

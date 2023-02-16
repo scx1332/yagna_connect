@@ -1,14 +1,24 @@
 # yagna_connect
 
 
-1. Spinup central net in the folder centralnet
+Make sure you are familiar with basic yagna usage:
+
+https://handbook.golem.network/introduction/requestor
+
+https://handbook.golem.network/introduction/provider
+
+Outbound VPN documentation
+
+https://github.com/golemfactory/ya-runtime-outbound-gateway
+
+
+1. [Optional - only for local debugging] Spinup central net in the folder centralnet
 
 ```
 docker-compose up -d
 ```
 
 yagna will communicate with the central net through the port 15758
-
 
 2. Spinup provider in the folder provider
 
@@ -37,7 +47,44 @@ http://127.0.0.1:3333/payment_fund
 
 Modify docker-compose.yml and common_config.env to your own needs
 
+Check status of the requestor
+```
 http://127.0.0.1:3333/
+```
+
+
+To communicate with yagna using commands:
+Optionally find your container with 
+```
+docker ps
+```
+or
+```
+docker-compose ps
+```
+
+Go inside container:
+```
+docker exec -it /requestor-yagna_requestor_node-1 /bin/bash
+```
+```
+yagna id list
+yagna payments status
+yagna app-key list
+yagna app-key create MyKey
+yagna app-key list
+```
+
+To extract outpound/exeunit logs from provider:
+
+```
+docker ps
+docker exec -it provider-prov1-1 /bin/bash
+python print_exe_unit_logs.py
+python print_outbound_logs.py
+```
+
+These scripts are looking for newest activity logs in the container and printing them
 
 4. Running
 
