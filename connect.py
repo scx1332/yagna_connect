@@ -21,10 +21,10 @@ API_URL_WEBSOCKETS = "ws://127.0.0.1:7465"
 
 
 def string_unescape(s, encoding='utf-8'):
-    return (s.encode('latin1')         # To bytes, required by 'unicode-escape'
-            .decode('unicode-escape') # Perform the actual octal-escaping decode
-            .encode('latin1')         # 1:1 mapping back to bytes
-            .decode(encoding))        # Decode original encoding
+    return (s.encode('latin1')  # To bytes, required by 'unicode-escape'
+            .decode('unicode-escape')  # Perform the actual octal-escaping decode
+            .encode('latin1')  # 1:1 mapping back to bytes
+            .decode(encoding))  # Decode original encoding
 
 
 class PostException(Exception):
@@ -141,9 +141,9 @@ async def negotiate_agreement(sender_address):
     logger.info(f"  Formatted for json post (ISO format with Z at the end): {demand_expiration_formatted_z}")
 
     demand = json.loads(demand_template \
-        .replace("%%EXPIRATION%%", demand_expiration_timestamp) \
-        .replace("%%SENDER_ADDRESS%%", sender_address) \
-        .replace("%%SUBNET%%", SUBNET))
+                        .replace("%%EXPIRATION%%", demand_expiration_timestamp) \
+                        .replace("%%SENDER_ADDRESS%%", sender_address) \
+                        .replace("%%SUBNET%%", SUBNET))
 
     dump_next_info("demand.json", json.dumps(demand, indent=4))
     demand_id = await send_request(f"{API_URL}/market-api/v1/demands", method="post", data=json.dumps(demand, indent=4))
@@ -209,7 +209,8 @@ async def negotiate_agreement(sender_address):
                     logger.info(f"agreement_id: {agreement_id}")
 
                     logger.info(f"Sending Agreement: {agreement_id} to Provider")
-                    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", method="post", data=None)
+                    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", method="post",
+                                       data=None)
 
                     logger.info(f"Waiting for Agreement: {agreement_id} Approval")
                     await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait",
@@ -333,7 +334,6 @@ async def main():
             if stderr:
                 dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
 
-
         assign_output = {
             "id": provider_id,
             "ip": ip_remote
@@ -352,7 +352,8 @@ async def main():
             "Content-Type": "application/json",
         }
         if 1:
-            async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/tcp/{ip_remote}/50671", extra_headers=[('Authorization', f'Bearer {BEARER_TOKEN}')]) as websocket:
+            async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/tcp/{ip_remote}/50671",
+                                          extra_headers=[('Authorization', f'Bearer {BEARER_TOKEN}')]) as websocket:
                 logger.info(f"Connected to websocket")
                 while True:
                     await websocket.send("Hello")
