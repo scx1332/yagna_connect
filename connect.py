@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import websockets
 
 import aiohttp
@@ -98,6 +98,13 @@ demand_template = """{
 next_info = 1
 
 
+async def prepare_tmp_directory():
+    if os.path.exists("tmp"):
+        shutil.rmtree("tmp")
+    await asyncio.sleep(1.0)
+    os.mkdir("tmp")
+
+
 def dump_next_info(file_name, text):
     global next_info
     with open(f"tmp/{next_info:03}_{file_name}", "w") as f:
@@ -122,79 +129,113 @@ async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, pol
         await asyncio.sleep(10)
 
 
-async def negotiate_aggreement(sender_address):
-    demand_json = demand_template \
-        .replace("%%EXPIRATION%%", str(int(time.time() * 1000 + 3600 * 1000))) \
+async def negotiate_agreement(sender_address):
+    now_datetime = datetime.now(timezone.utc)
+    agreement_validity_timedelta = timedelta(minutes=30)
+    demand_expiration_datetime = now_datetime + agreement_validity_timedelta
+    demand_expiration_timestamp = str(int(demand_expiration_datetime.timestamp() * 1000))
+    demand_expiration_formatted = now_datetime.astimezone().isoformat()
+    demand_expiration_formatted_z = demand_expiration_datetime.isoformat().replace("+00:00", "Z")
+    logger.info(f"Setting demand expiration to {demand_expiration_formatted}")
+    logger.info(f"  Formatted for demand (timestamp microseconds): {demand_expiration_timestamp}")
+    logger.info(f"  Formatted for json post (ISO format with Z at the end): {demand_expiration_formatted_z}")
+
+    demand = json.loads(demand_template \
+        .replace("%%EXPIRATION%%", demand_expiration_timestamp) \
         .replace("%%SENDER_ADDRESS%%", sender_address) \
-        .replace("%%SUBNET%%", SUBNET)
+        .replace("%%SUBNET%%", SUBNET))
 
-    if os.path.exists("tmp"):
-        shutil.rmtree("tmp")
-        await asyncio.sleep(1.0)
-    os.mkdir("tmp")
-
-    # validate json
-    json.loads(demand_json)
-    global next_info
-    with open(f"tmp/{next_info:03}_demand.json", "w") as f:
-        f.write(demand_json)
-    next_info += 1
-
-    # Create Demand on Market
-    demand_id = await send_request(f"{API_URL}/market-api/v1/demands", method="post", data=demand_json)
+    dump_next_info("demand.json", json.dumps(demand, indent=4))
+    demand_id = await send_request(f"{API_URL}/market-api/v1/demands", method="post", data=json.dumps(demand, indent=4))
     demand_id = demand_id.replace('"', '')
     logger.info(f"Demands information: {demand_id}")
 
-    poll_event = await get_proposal_event(demand_id)
+    while True:
+        max_events = 5
+        poll_timeout = 3000
 
-    with open(f"tmp/{next_info:03}_event.json", "w") as f:
-        f.write(json.dumps(poll_event, indent=4))
-        next_info += 1
+        # Query market for new events (we are interested in new Proposals)
+        events = await send_request(
+            f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
+        logger.info(f"Query result: {len(events)} event(s)")
+        events = json.loads(events)
 
-    proposal = poll_event['proposal']
-    proposal_id = proposal['proposalId']
+        for event in events:
+            try:
+                # We can get here other events like ProposalRejected, so filtering them out
+                if event['eventType'] != 'ProposalEvent':
+                    continue
 
-    counter_proposal = await send_request(f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}",
-                                          method='post', data=demand_json)
-    counter_proposal_id = counter_proposal.replace('"', '')
-    logger.info(f"Counter proposal: {counter_proposal_id}")
-    poll_event = await get_proposal_event(demand_id, counter_proposal_id)
-    logger.info(f"Received second proposal event after counter proposal")
+                dump_next_info("event.json", json.dumps(event, indent=4))
 
-    with open(f"tmp/{next_info:03}_proposal_event.json", "w") as f:
-        f.write(json.dumps(poll_event, indent=4))
-        next_info += 1
+                proposal_id = event['proposal']['proposalId']
+                logger.info(f"Proposal id: {proposal_id}")
 
-    proposal_id = poll_event['proposal']['proposalId']
-    agreement_proposal = {
-        "proposalId": proposal_id,
-        "validTo": datetime.now().isoformat() + "Z"
-    }
-    agreement_proposal = json.dumps(agreement_proposal)
-    with open(f"tmp/{next_info:03}_agreement_proposal.json", "w") as f:
-        f.write(json.dumps(agreement_proposal, indent=4))
-        next_info += 1
-    logger.info(f"Agreement proposal: {agreement_proposal}")
-    agreement_response = await send_request(f"{API_URL}/market-api/v1/agreements", method="post",
-                                            data=agreement_proposal)
-    agreement_id = agreement_response.replace('"', '')
-    logger.info(f"Created agreement id: {agreement_id}")
+                # Getting full Proposal content from market API
+                received_proposal = await send_request(
+                    f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
+                received_proposal = json.loads(received_proposal)
 
-    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", method="post", data=None)
-    logger.info(f"Agreement confirmed")
+                if received_proposal["state"] == "Initial":
+                    # In this case we got Proposal from the market, but we didn't talk
+                    # with this Provider yet, so we should send counter Proposal.
+                    # We just send the same properties and constraints as we sent in Demand before,
+                    # because we don't use more advanced negotiations here.
+                    proposal_id = received_proposal['proposalId']
 
-    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait", method="post", data=None)
-    logger.info(f"Agreement approved")
-    return agreement_id
+                    logger.info(f"Sending counter proposal for {proposal_id}")
+
+                    dump_next_info("counter_proposal.json", json.dumps(demand, indent=4))
+
+                    counter_proposal = await send_request(
+                        f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}",
+                        method='post',
+                        data=json.dumps(demand))
+                    counter_proposal_id = counter_proposal.replace('"', '')
+                    logger.info(f"Counter proposal: {counter_proposal_id}")
+                elif received_proposal["state"] == "Draft":
+                    # In this case Provider responded to our first counter Proposal.
+                    # We could try to propose Agreement.
+                    proposal_id = received_proposal['proposalId']
+                    agreement_proposal = {
+                        "proposalId": proposal_id,
+                        "validTo": demand_expiration_formatted_z
+                    }
+
+                    logger.info(f"Creating Agreement for: {proposal_id}")
+                    create_agreement = await send_request(f"{API_URL}/market-api/v1/agreements", method="post",
+                                                          data=json.dumps(agreement_proposal))
+                    agreement_id = create_agreement.replace('"', '')
+                    logger.info(f"agreement_id: {agreement_id}")
+
+                    logger.info(f"Sending Agreement: {agreement_id} to Provider")
+                    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/confirm", method="post", data=None)
+
+                    logger.info(f"Waiting for Agreement: {agreement_id} Approval")
+                    await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}/wait",
+                                       method="post", data=None)
+                    logger.info(f"Agreement {agreement_id} approved")
+                    return agreement_id
+                else:
+                    # Other states are unexpected, so continue the loop
+                    continue
+            except PostException as ex:
+                logger.error(f"Send exception when processing event: {event}")
+                pass
+            except Exception as ex:
+                logger.error(f"Error while processing event: {event}")
+                raise ex
 
 
 async def main():
+    await prepare_tmp_directory()
+
     me_data = await send_request(f"{API_URL}/me")
     logger.info(f"Identity information: {me_data}")
     me_data = json.loads(me_data)
     sender_address = me_data["identity"]
 
-    agreement_id = await negotiate_aggreement(sender_address)
+    agreement_id = await negotiate_agreement(sender_address)
     logger.info(f"Agreement id successfully negotiated: {agreement_id}")
 
     aggreement_resp = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}")
@@ -220,15 +261,14 @@ async def main():
         net_response = await send_request(f"{API_URL}/net-api/v2/vpn/net", method="post", data=json.dumps(new_network))
         net_response = json.loads(net_response)
         net_id = net_response["id"]
-        global next_info
-        with open(f"tmp/{next_info:03}_net_response.json", "w") as f:
-            f.write(json.dumps(net_response, indent=4))
-            next_info += 1
+
+        dump_next_info("net_response.json", json.dumps(net_response, indent=4))
 
         ip_addr_resp = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/addresses")
         ip_local = json.loads(ip_addr_resp)
         if ip_local[0]['ip'] != "192.168.8.1/24":
-            print(f"Unexpected local ip {ip_local}")
+            logger.error(f"Unexpected local ip {ip_local}")
+            raise Exception("Unexpected local ip {ip_local}")
         ip_local = "192.168.8.1"
 
         commands = [
@@ -253,15 +293,13 @@ async def main():
         exec_command = {
             "text": str
         }
-        print(f"Deploying network on provider {net_id}")
-        with open(f"tmp/{next_info:03}_exec_command.json", "w") as f:
-            f.write(json.dumps(commands, indent=4))
-            next_info += 1
+        logger.info(f"Deploying network on provider {net_id}")
+        dump_next_info("exec_command.json", json.dumps(exec_command, indent=4))
 
         response_exec = await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post",
                                            data=json.dumps(exec_command))
         response_batch_id = response_exec.replace('"', '')
-        print(f"Exec batch id: {response_batch_id}")
+        logger.info(f"Exec batch id: {response_batch_id}")
 
         current_time = time.time()
         while True:
@@ -274,9 +312,9 @@ async def main():
                     wait = False
                     break
             if not wait:
-                print(f"Batch execution finished")
+                logger.info(f"Batch execution finished")
                 break
-            print(f"Waiting for batch to finish")
+            logger.info(f"Waiting for batch to finish")
             await asyncio.sleep(1)
             dump_next_info("exec_output.json", json.dumps(response_exec_json, indent=4))
             if time.time() - current_time > 20:
@@ -300,13 +338,13 @@ async def main():
             "id": provider_id,
             "ip": ip_remote
         }
-        print(f"Assigning output to {net_id}")
+        logger.info(f"Assigning output to {net_id}")
         await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes", method="post",
                            data=json.dumps(assign_output))
 
         nodes = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes")
         nodes = json.loads(nodes)
-        print(f"Nodes: {nodes}")
+        logger.info(f"Nodes: {nodes}")
 
         remote_port = 22
 
@@ -315,10 +353,10 @@ async def main():
         }
         if 1:
             async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/tcp/{ip_remote}/50671", extra_headers=[('Authorization', f'Bearer {BEARER_TOKEN}')]) as websocket:
-                print(f"Connected to websocket")
+                logger.info(f"Connected to websocket")
                 while True:
                     await websocket.send("Hello")
-                    print(f"Sent message")
+                    logger.info(f"Sent message")
                     break
 
         # todo websocket
