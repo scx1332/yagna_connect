@@ -25,7 +25,7 @@ yagna will communicate with the central net through the port 15758
 Prepare environment variables if not done yet
 ```
 pip install web3
-python gen_env.py
+python3 gen_env.py
 ```
 
 3. Spinup requestor in the folder requestor
@@ -33,7 +33,7 @@ python gen_env.py
 Prepare environment variables if not done yet
 ```
 pip install web3
-python gen_env.py
+python3 gen_env.py
 ```
 
 ```
@@ -85,4 +85,8 @@ python print_outbound_logs.py
 ```
 
 These scripts are looking for newest activity logs in the container and printing them
+
+4. Running
+
+```poetry run python3 connect.py```
 
