@@ -112,23 +112,6 @@ def dump_next_info(file_name, text):
     next_info += 1
 
 
-async def get_proposal_event(demand_id, prev_proposal_id=None, max_events=5, poll_timeout=3000):
-    while True:
-        poll = await send_request(
-            f"{API_URL}/market-api/v1/demands/{demand_id}/events?maxEvents={max_events}&pollTimeout={poll_timeout}")
-        poll_json = json.loads(poll)
-        for poll_res in poll_json:
-            if poll_res['eventType'] != 'ProposalEvent':
-                continue
-            if prev_proposal_id and "prevProposalId" not in poll_res['proposal']:
-                continue
-            if prev_proposal_id and poll_res['proposal']["prevProposalId"] != prev_proposal_id:
-                continue
-
-            return poll_res
-        await asyncio.sleep(10)
-
-
 async def create_demand(sender_address):
     now_datetime = datetime.now(timezone.utc)
     agreement_validity_timedelta = timedelta(minutes=30)
