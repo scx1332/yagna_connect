@@ -14,7 +14,7 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-BEARER_TOKEN = "65742089207217182944"
+BEARER_TOKEN = "66038892407434930151"
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
 API_URL_WEBSOCKETS = "ws://127.0.0.1:7465"
@@ -157,14 +157,14 @@ async def create_demand(sender_address):
     demand_id = demand_id.replace('"', '')
 
     logger.info(f"Demands information: {demand_id}")
-    return demand_id
+    return demand_id, demand
 
 
 # This function will negotiate single Agreement with the first Provider that will respond
 # to us. In normal use cases probably we would like to have more advanced market strategy
 # which scores different Proposals based on the price requested in relation to resources offered.
 async def negotiate_agreement(sender_address):
-    demand_id = await create_demand(sender_address)
+    demand_id, demand = await create_demand(sender_address)
 
     while True:
         max_events = 5
