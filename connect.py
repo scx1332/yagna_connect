@@ -306,8 +306,10 @@ async def wait_for_batch_finish(activity_id, batch_id):
         if batch["result"] != "Ok":
             raise Exception(f"Batch {batch_id} failed")
 
-        dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
-        dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
+        if stdout:
+            dump_next_info(f"exec_output_{batch_id}_stdout.log", string_unescape(stdout))
+
+            dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
 
 
 
@@ -404,7 +406,7 @@ async def main():
         await wait_for_batch_finish(activity_id, response_batch_id)
 
         # To use VPN on our Provider we have to assign IP address to it.
-		
+
 
         assign_output = {
             "id": provider_id,
@@ -434,7 +436,6 @@ async def main():
 
         # todo websocket
         # aiohttp.ClientSession()
-
 
     except Exception as e:
         traceback.print_exc(file=sys.stderr)
