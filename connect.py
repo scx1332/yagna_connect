@@ -510,9 +510,13 @@ async def main():
     parser = argparse.ArgumentParser(
         prog='ConnectVPN',
         description='Simple demo script for outbound VPN activity')
-    parser.add_argument('--key')
+    parser.add_argument('--key', help='API key', required=True)
+    parser.add_argument('--debug-ignore-payments', help='Ignore payments', action='store_true')
     global bearer_token
     bearer_token = parser.parse_args().key
+    ignore_payments = parser.parse_args().debug_ignore_payments
+    if ignore_payments:
+        logger.warning(f"Payments ignored: {ignore_payments}. This is not proper way to use yagna, only for DEBUGGING.")
 
     await prepare_tmp_directory()
 
@@ -522,7 +526,8 @@ async def main():
     sender_address = me_data["identity"]
 
     # We need to reserve money for future payments.
-    allocation_id = await create_allocation("erc20-rinkeby-tglm", sender_address, 10)
+    if not ignore_payments:
+        allocation_id = await create_allocation("erc20-rinkeby-tglm", sender_address, 10)
 
     # To compute anything, we need to sign Agreement with at least one Provider.
     # This function implements whole negotiations process and returns negotiated Agreement.
@@ -554,7 +559,8 @@ async def main():
 
         # Provider will start sending DebitNotes in intervals.
         # We need background task, that will validate and accept them to sustain the Agreement.
-        asyncio.create_task(accept_debit_notes(agreement_id, activity_id, allocation_id))
+        if not ignore_payments:
+            asyncio.create_task(accept_debit_notes(agreement_id, activity_id, allocation_id))
 
         (network, local_ip, ip_remote) = await create_network()
         net_id = network["id"]
@@ -638,7 +644,8 @@ async def main():
         # Invoice will be sent by Provider, after Agreement is terminated, so we spawn
         # task to listen to Invoices asynchronously and terminate Agreement.
         # This way we won't miss incoming event.
-        payments = asyncio.create_task(pay_invoices(agreement_id, allocation_id, 15))
+        if not ignore_payments:
+            payments = asyncio.create_task(pay_invoices(agreement_id, allocation_id, 15))
 
         # We should always free Provider, by terminating the Agreement.
         terminate_reason = {
@@ -652,7 +659,8 @@ async def main():
         # Release allocation made on the beginning, for funds to be available in other application runs.
         # Allocation will be release automatically after timeout, if we forget about this.
         await remove_network(net_id)
-        await payments
+        if not ignore_payments:
+            await payments
 
         await release_allocation(allocation_id)
 
