@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import shutil
@@ -16,7 +17,7 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-BEARER_TOKEN = "60385131821230470108"
+BEARER_TOKEN = ""
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
 API_URL_WEBSOCKETS = "ws://127.0.0.1:7465"
@@ -43,7 +44,7 @@ async def send_request(url, method="get", data=None):
     headers = [
         ('Content-Type', 'application/json'),
         ('Accept', 'application/json'),
-        ('Authorization', f'Bearer {BEARER_TOKEN}')
+        ('Authorization', f'Bearer {bearer_token}')
     ]
     if data:
         data_bytes = data.encode('utf-8')  # needs to be bytes
@@ -126,14 +127,11 @@ async def create_demand(sender_address):
     demand_expiration_datetime = now_datetime + agreement_validity_timedelta
     demand_expiration_timestamp = str(int(demand_expiration_datetime.timestamp() * 1000))
     demand_expiration_formatted = now_datetime.astimezone().isoformat()
-    demand_expiration_formatted_z = demand_expiration_datetime.isoformat().replace("+00:00", "Z")
-    logger.info(f"Setting demand expiration to {demand_expiration_formatted}")
-    logger.info(f"  Formatted for demand (timestamp microseconds): {demand_expiration_timestamp}")
-    logger.info(f"  Formatted for json post (ISO format with Z at the end): {demand_expiration_formatted_z}")
+    logger.info(f"Setting demand expiration to {demand_expiration_formatted} timestamp {demand_expiration_timestamp}")
 
-    demand = json.loads(demand_template \
-                        .replace("%%EXPIRATION%%", demand_expiration_timestamp) \
-                        .replace("%%SENDER_ADDRESS%%", sender_address) \
+    demand = json.loads(demand_template
+                        .replace("%%EXPIRATION%%", demand_expiration_timestamp)
+                        .replace("%%SENDER_ADDRESS%%", sender_address)
                         .replace("%%SUBNET%%", SUBNET))
 
     dump_next_info("demand.json", json.dumps(demand, indent=4))
@@ -314,7 +312,15 @@ async def wait_for_batch_finish(activity_id, batch_id):
             dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
 
 
+
 async def main():
+    parser = argparse.ArgumentParser(
+        prog='ConnectVPN',
+        description='Simple demo script for outbound VPN activity')
+    parser.add_argument('--key')
+    global bearer_token
+    bearer_token = parser.parse_args().key
+
     await prepare_tmp_directory()
 
     me_data = await send_request(f"{API_URL}/me")
@@ -353,6 +359,13 @@ async def main():
         (network, local_ip, ip_remote) = await create_network()
         net_id = network["id"]
 
+        # check if local IP is assigned as expected to 192.168.8.1
+        ip_addr_resp = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/addresses")
+        ip_local = json.loads(ip_addr_resp)
+        if ip_local[0]['ip'] != "192.168.8.1/24":
+            logger.error(f"Unexpected local ip {ip_local}")
+            raise Exception("Unexpected local ip {ip_local}")
+        ip_local = "192.168.8.1"
         # Activity is created, now we need to start ExeUnit Runtime and initialize it.
         # We do this by sending `Deploy` and `Start` commands. In `Deploy` command we specify
         # network configuration.
@@ -393,6 +406,8 @@ async def main():
         await wait_for_batch_finish(activity_id, response_batch_id)
 
         # To use VPN on our Provider we have to assign IP address to it.
+
+
         assign_output = {
             "id": provider_id,
             "ip": ip_remote
@@ -412,7 +427,7 @@ async def main():
         }
         if 1:
             async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/tcp/{ip_remote}/50671",
-                                          extra_headers=[('Authorization', f'Bearer {BEARER_TOKEN}')]) as websocket:
+                                          extra_headers=[('Authorization', f'Bearer {bearer_token}')]) as websocket:
                 logger.info(f"Connected to websocket")
                 while True:
                     await websocket.send("Hello")
