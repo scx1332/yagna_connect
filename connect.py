@@ -662,7 +662,8 @@ async def main():
         if not ignore_payments:
             await payments
 
-        await release_allocation(allocation_id)
+        if not ignore_payments:
+            await release_allocation(allocation_id)
 
 
 if __name__ == "__main__":

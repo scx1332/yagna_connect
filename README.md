@@ -12,7 +12,7 @@ Outbound VPN documentation
 https://github.com/golemfactory/ya-runtime-outbound-gateway
 
 
-1. [Optional - only for local debugging] Spinup central net in the folder centralnet
+### 1. [Optional - only for local debugging] Spinup central net in the folder centralnet #### ###
 
 ```
 docker-compose up -d
@@ -20,7 +20,7 @@ docker-compose up -d
 
 yagna will communicate with the central net through the port 15758
 
-2. Spinup provider in the folder provider
+### 2. Spinup provider in the folder provider ###
 
 Prepare environment variables if not done yet
 ```
@@ -28,7 +28,13 @@ pip install web3
 python3 gen_env.py
 ```
 
-3. Spinup requestor in the folder requestor
+or
+
+```
+poetry run python3 gen_env.py
+```
+
+### 3. Spinup requestor in the folder requestor ###
 
 Prepare environment variables if not done yet
 ```
@@ -52,8 +58,8 @@ Check status of the requestor
 http://127.0.0.1:3333/
 ```
 
+### 4. To communicate with yagna using commands: ###
 
-To communicate with yagna using commands:
 Optionally find your container with 
 ```
 docker ps
@@ -75,7 +81,7 @@ yagna app-key create MyKey
 yagna app-key list
 ```
 
-To extract outpound/exeunit logs from provider:
+To extract outbound or exe-unit logs from provider:
 
 ```
 docker ps
@@ -86,7 +92,9 @@ python print_outbound_logs.py
 
 These scripts are looking for newest activity logs in the container and printing them
 
-4. Running
+### Running ###
 
-```poetry run python3 connect.py```
+You can run using poetry or installed python (which needs some pip installs) as you prefer.
+
+```poetry run python3 connect.py --key <app-key>```
 
