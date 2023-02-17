@@ -114,6 +114,7 @@ def initialize_payments(max_tries: int):
 
 
 if __name__ == '__main__':
+    os.unsetenv("RUST_LOG")
     yagna_initialized = check_for_yagna_startup(10)
     if yagna_initialized:
         payment_initialized = initialize_payments(5)
