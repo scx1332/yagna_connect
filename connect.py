@@ -62,7 +62,7 @@ async def send_request(url, method="get", data=None):
                 if result.status == 400:
                     logger.error(
                         f"Error 400")
-                    logger.error(await result.text())
+                    logger.error(await result.json())
                     raise PostException("Error 400 received")
                 if result.status == 404:
                     logger.error(
@@ -183,6 +183,8 @@ async def negotiate_agreement(sender_address):
                     f"{API_URL}/market-api/v1/demands/{demand_id}/proposals/{proposal_id}")
                 received_proposal = json.loads(received_proposal)
 
+                dump_next_info("received_proposal.json", json.dumps(received_proposal, indent=4))
+
                 if received_proposal["state"] == "Initial":
                     # In this case we got Proposal from the market, but we didn't talk
                     # with this Provider yet, so we should send counter Proposal.
@@ -271,9 +273,21 @@ async def create_network():
     if ip_local[0]['ip'] != "192.168.8.1/24":
         logger.error(f"Unexpected local ip {ip_local}")
         raise Exception("Unexpected local ip {ip_local}")
-    ip_local = "192.168.8.1"
+
+    # Check if local IP is assigned as expected to 192.168.8.1
+    ip_addr_resp = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/addresses")
+    ip_local = json.loads(ip_addr_resp)
+    if ip_local[0]['ip'] != "192.168.8.1/24":
+        logger.error(f"Unexpected local ip {ip_local}")
+        raise Exception("Unexpected local ip {ip_local}")
 
     return net_response, ip_local, ip_remote
+
+
+async def remove_network(network_id):
+    logger.info(f"Removing network: {network_id}")
+    await send_request(f"{API_URL}/net-api/v2/vpn/net/{network_id}", method="delete")
+    logger.info(f"Network: {network_id} removed")
 
 
 async def wait_for_batch_finish(activity_id, batch_id):
@@ -310,6 +324,187 @@ async def wait_for_batch_finish(activity_id, batch_id):
         dump_next_info(f"exec_output_{batch_id}_stderr.log", string_unescape(stderr))
 
 
+async def create_allocation(platform, wallet, amount):
+    # Allocation will be freed after this time and all reserved money
+    # will be available for new Agreements.
+    valid_to = datetime.now(timezone.utc) + timedelta(hours=24)
+    valid_to = valid_to.isoformat().replace("+00:00", "Z")
+
+    allocation = {
+        "totalAmount": amount,
+        "makeDeposit": False,
+        "timeout": valid_to,
+        "paymentPlatform": platform,
+        "address": wallet
+    }
+    allocation = await send_request(
+        f"{API_URL}/payment-api/v1/allocations", method="post", data=json.dumps(allocation))
+    allocation = json.loads(allocation)
+    allocation_id = allocation["allocationId"]
+
+    dump_next_info("allocation.json", json.dumps(allocation, indent=4))
+    logger.info(f"Created allocation: {allocation_id} for platform: {platform} and wallet: {wallet}")
+
+    return allocation_id
+
+
+async def release_allocation(allocation_id):
+    logger.info(f"Releasing allocation: {allocation_id}")
+
+    await send_request(
+        f"{API_URL}/payment-api/v1/allocations/{allocation_id}", method="delete")
+
+    logger.info(f"Allocation: {allocation_id} released")
+
+
+async def accept_debit_notes(agreement, activity, allocation_id):
+    ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    logger.info("Listening for debit note events")
+
+    while True:
+        try:
+            # Provider will send DebitNotes in intervals specified in Agreement.
+            # We are expected to accept payments for these DebitNotes, otherwise
+            # Provider might break Agreement with us.
+            logger.info(f"Query debit note events after: {ts}")
+            events = await send_request(
+                f"{API_URL}/payment-api/v1/debitNoteEvents?afterTimestamp={ts}&timeout=15")
+            events = json.loads(events)
+
+            dump_next_info("debit_note_event.json", json.dumps(events, indent=4))
+        except Exception as e:
+            logger.error("Failed to fetch debit note events: %s", e)
+            events = []
+
+        for event in events:
+            debit_note_id = event.get("debitNoteId")
+            event_date = event.get("eventDate")
+            event_type = event.get("eventType")
+
+            # When we query events next time, we want to ignore events, that we
+            # already processed. Events are expected to come ordered by timestamps.
+            ts = event_date
+
+            if event_type != "DebitNoteReceivedEvent":
+                logger.warning("Ignoring DebitNote event type: %s", event_type)
+                continue
+            if not (debit_note_id and event_date):
+                logger.warning("Empty DebitNote event: %r", event)
+                continue
+
+            # Event contains limited amount of information. We might need more to verify
+            # DebitNote, so let's query full DebitNote content.
+            debit_note = await send_request(f"{API_URL}/payment-api/v1/debitNotes/{debit_note_id}")
+            debit_note = json.loads(debit_note)
+            amount = float(debit_note["totalAmountDue"])
+
+            dump_next_info("debit_note.json", json.dumps(debit_note, indent=4))
+
+            # Check if DebitNote is for Agreement and Activity that we created.
+            # On this endpoint we could get DebitNotes for all Agreements created using
+            # the same identity.
+            if debit_note["agreementId"] != agreement:
+                continue
+            if debit_note["activityId"] != activity:
+                continue
+
+            logger.info(f"Received DebitNote to amount: {amount}")
+
+            # In production code we should validate the amount requested here.
+            acceptance = {
+                "totalAmountAccepted": amount,
+                "allocationId": allocation_id,
+            }
+
+            # Accepting DebitNotes means, that we agree to pay amount specified in this DebitNote.
+            # If we don't agree to pay, we should immediately reject DebitNote and break Agreement.
+            # Anyway if we don't accept DebitNotes, then Provider will break Agreement himself.
+            # In general, it is better to accept DebitNotes, otherwise Providers may not want to
+            # cooperate with us.
+            await send_request(f"{API_URL}/payment-api/v1/debitNotes/{debit_note_id}/accept", method="post",
+                               data=json.dumps(acceptance))
+
+            logger.info(
+                "Debit note %s (amount: %s) accepted",
+                debit_note_id,
+                amount,
+            )
+
+
+async def pay_invoices(agreement, allocation_id, timeout):
+    logger.info("Waiting for Invoices to pay..")
+
+    start_ts = datetime.now(timezone.utc)
+    ts = start_ts.isoformat().replace("+00:00", "Z")
+    while True:
+        try:
+            # Provider will send Invoice after Agreement will be terminated.
+            # Due to problems on Provider side, Invoice might not come, so we wait
+            # only for specific time.
+            timeout_left = (timedelta(seconds=timeout) - (datetime.now(timezone.utc) - start_ts)).total_seconds()
+
+            if timeout_left < 0.0:
+                logger.warning(f"Invoice didn't received in timeout: {timeout}")
+                return
+
+            logger.info(f"Query Invoice events after: {ts}, timeout: {timeout_left}")
+            events = await send_request(
+                f"{API_URL}/payment-api/v1/invoiceEvents?afterTimestamp={ts}&timeout={timeout_left}")
+            events = json.loads(events)
+
+            dump_next_info("invoice_event.json", json.dumps(events, indent=4))
+        except Exception as e:
+            logger.error("Failed to fetch Invoice events: %s", e)
+            events = []
+
+        for event in events:
+            invoice_id = event.get("invoiceId")
+            event_date = event.get("eventDate")
+            event_type = event.get("eventType")
+
+            # When we query events next time, we want to ignore events, that we
+            # already processed. Events are expected to come ordered by timestamps.
+            ts = event_date
+
+            if event_type != "InvoiceReceivedEvent":
+                logger.warning("Ignoring invoice event type: %s", event_type)
+                continue
+            if not (invoice_id and event_date):
+                logger.warning("Empty Invoice event: %r", event)
+                continue
+
+            # Event contains limited amount of information. We might need more to verify
+            # DebitNote, so let's query full DebitNote content.
+            invoice = await send_request(f"{API_URL}/payment-api/v1/invoices/{invoice_id}")
+            invoice = json.loads(invoice)
+            amount = float(invoice["amount"])
+
+            dump_next_info("invoice.json", json.dumps(invoice, indent=4))
+
+            # Check if Invoice is for Agreement and Activity that we created.
+            # On this endpoint we could get Invoices for all Agreements created using
+            # the same identity.
+            if invoice["agreementId"] != agreement:
+                continue
+
+            logger.info(f"Received Invoice to amount: {amount}")
+
+            # In production code we should validate the amount requested here.
+            acceptance = {
+                "totalAmountAccepted": amount,
+                "allocationId": allocation_id,
+            }
+
+            await send_request(f"{API_URL}/payment-api/v1/invoices/{invoice_id}/accept", method="post",
+                               data=json.dumps(acceptance))
+
+            logger.info(
+                "Invoice %s (amount: %s) accepted",
+                invoice_id,
+                amount,
+            )
+            return
+
 
 async def main():
     parser = argparse.ArgumentParser(
@@ -325,6 +520,9 @@ async def main():
     logger.info(f"Identity information: {me_data}")
     me_data = json.loads(me_data)
     sender_address = me_data["identity"]
+
+    # We need to reserve money for future payments.
+    allocation_id = await create_allocation("erc20-rinkeby-tglm", sender_address, 10)
 
     # To compute anything, we need to sign Agreement with at least one Provider.
     # This function implements whole negotiations process and returns negotiated Agreement.
@@ -354,16 +552,13 @@ async def main():
         activity_id = activity['activityId']
         logger.info(f"Activity id: {activity_id}")
 
+        # Provider will start sending DebitNotes in intervals.
+        # We need background task, that will validate and accept them to sustain the Agreement.
+        asyncio.create_task(accept_debit_notes(agreement_id, activity_id, allocation_id))
+
         (network, local_ip, ip_remote) = await create_network()
         net_id = network["id"]
 
-        # check if local IP is assigned as expected to 192.168.8.1
-        ip_addr_resp = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/addresses")
-        ip_local = json.loads(ip_addr_resp)
-        if ip_local[0]['ip'] != "192.168.8.1/24":
-            logger.error(f"Unexpected local ip {ip_local}")
-            raise Exception("Unexpected local ip {ip_local}")
-        ip_local = "192.168.8.1"
         # Activity is created, now we need to start ExeUnit Runtime and initialize it.
         # We do this by sending `Deploy` and `Start` commands. In `Deploy` command we specify
         # network configuration.
@@ -404,7 +599,6 @@ async def main():
         await wait_for_batch_finish(activity_id, response_batch_id)
 
         # To use VPN on our Provider we have to assign IP address to it.
-		
 
         assign_output = {
             "id": provider_id,
@@ -440,6 +634,12 @@ async def main():
         traceback.print_exc(file=sys.stderr)
         logger.error(f"Error while sending activity events: {e}")
     finally:
+        # We should pay for computations here.
+        # Invoice will be sent by Provider, after Agreement is terminated, so we spawn
+        # task to listen to Invoices asynchronously and terminate Agreement.
+        # This way we won't miss incoming event.
+        payments = asyncio.create_task(pay_invoices(agreement_id, allocation_id, 15))
+
         # We should always free Provider, by terminating the Agreement.
         terminate_reason = {
             "message": "Finishing agreement",
@@ -449,7 +649,12 @@ async def main():
                                                  method="post", data=json.dumps(terminate_reason))
         logger.info(f"Agreement terminated: {terminate_agreement}")
 
-        # Here we should wait for Invoice from Provider to accept.
+        # Release allocation made on the beginning, for funds to be available in other application runs.
+        # Allocation will be release automatically after timeout, if we forget about this.
+        await remove_network(net_id)
+        await payments
+
+        await release_allocation(allocation_id)
 
 
 if __name__ == "__main__":
