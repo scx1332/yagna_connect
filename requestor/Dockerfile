@@ -7,7 +7,7 @@ RUN pip install quart requests
 
 
 WORKDIR /yagna
-RUN wget https://github.com/golemfactory/yagna/releases/download/v0.12.0/golem-requestor-linux-v0.12.0.tar.gz -O - | tar -xz && mv golem-requestor-linux-v0.12.0 golem-binaries
+RUN wget https://github.com/golemfactory/yagna/releases/download/pre-rel-v0.13.0-raw-rc1/golem-provider-linux-pre-rel-v0.13.0-raw-rc1.tar.gz -O - | tar -xz && mv golem-provider-linux-pre-rel-v0.13.0-raw-rc1 golem-binaries
 
 RUN mv golem-binaries/yagna /usr/bin
 

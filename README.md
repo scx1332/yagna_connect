@@ -90,6 +90,12 @@ python print_exe_unit_logs.py
 python print_outbound_logs.py
 ```
 
+or from outside the docker:
+
+```
+docker exec -t all-prov1-1 python print_outbound_logs.py
+```
+
 These scripts are looking for newest activity logs in the container and printing them
 
 ### Running ###

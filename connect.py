@@ -12,6 +12,10 @@ import platform
 import time
 import json
 import os
+import scapy
+from scapy.all import Raw
+from scapy.layers.dns import DNS
+from scapy.layers.inet import IP, in4_chksum, UDP
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -623,13 +627,24 @@ async def main():
         headers = {
             "Content-Type": "application/json",
         }
+        # wait
+        # print("Waiting for 50 seconds")
+        # await asyncio.sleep(50)
         if 1:
-            async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/tcp/{ip_remote}/50671",
+            async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/{ip_remote}/50671",
                                           extra_headers=[('Authorization', f'Bearer {bearer_token}')]) as websocket:
                 logger.info(f"Connected to websocket")
                 while True:
-                    await websocket.send("Hello")
-                    logger.info(f"Sent message")
+                    packet = IP(src="1.1.1.1", dst="2.2.2.2")/UDP(sport=1000, dport=2000)/Raw(load="Hello World")
+                    packet_raw = scapy.compat.raw(packet)
+                    packet.show()
+                    packet_hex = packet_raw.hex()
+                    logger.info(f"Sending packet {packet_hex}")
+                    await websocket.send(packet_raw)
+                    packet_back = await websocket.recv()
+                    IP(packet_back).show()
+                    packet_back_hex = packet_back.hex()
+                    logger.info(f"Got packet back: {packet_back_hex}")
                     break
 
         # todo websocket
