@@ -26,6 +26,8 @@ services:
     command: ./run_provider.sh
     cap_add:
       - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
   yagna_requestor_node:
     build:
       dockerfile: Dockerfile_FromSource
@@ -37,6 +39,9 @@ services:
         - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
         - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
         - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+        - YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN=${YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN:-1}
+        - YA_VPN_CONNECTOR_BRANCH=${YA_VPN_CONNECTOR_BRANCH:-main}
+        - YA_VPN_CONNECTOR_BUILD_TOKEN=${YA_VPN_CONNECTOR_BUILD_TOKEN:-1}
     volumes:
       - "./yagna_dir:/root/.local/share/yagna"
     environment:
@@ -54,3 +59,5 @@ services:
       - yagna_config.env
     cap_add:
       - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
