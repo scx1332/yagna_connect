@@ -631,6 +631,8 @@ async def main():
         # print("Waiting for 50 seconds")
         # await asyncio.sleep(50)
         if 1:
+            logger.info(f"Websocket open {API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/{ip_remote}/50671")
+            await asyncio.sleep(1000000)
             async with websockets.connect(f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/{ip_remote}/50671",
                                           extra_headers=[('Authorization', f'Bearer {bearer_token}')]) as websocket:
                 logger.info(f"Connected to websocket")
@@ -645,7 +647,7 @@ async def main():
                     IP(packet_back).show()
                     packet_back_hex = packet_back.hex()
                     logger.info(f"Got packet back: {packet_back_hex}")
-                    break
+                    await asyncio.sleep(1)
 
         # todo websocket
         # aiohttp.ClientSession()

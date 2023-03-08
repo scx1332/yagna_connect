@@ -47,13 +47,18 @@ RUN if [ "${YAGNA_BUILD_PROFILE}" = "dev" ] ; then ln -s /yagna/target/${YAGNA_B
 FROM python:3.11
 RUN apt-get update
 # install common helpful tools
-RUN apt-get install -y curl vim jq net-tools htop
+RUN apt-get install -y curl vim jq net-tools htop iptables build-essential iputils-ping iproute2 dnsutils ncat
 # install python requirements for yagna_mon.py
-RUN pip install quart requests
+RUN pip install quart requests websockets scapy aiohttp
 
 
 WORKDIR /yagna
 
+COPY novpn-c ./novpn-c
+WORKDIR /yagna/novpn-c
+RUN make
+
+WORKDIR /yagna
 COPY --from=yagna-build /build/yagna /usr/bin
 
 COPY *.py ./

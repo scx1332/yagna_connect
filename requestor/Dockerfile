@@ -1,7 +1,7 @@
 FROM python:3.11
 RUN apt-get update
 # install common helpful tools
-RUN apt-get install -y curl vim jq net-tools htop
+RUN apt-get install -y curl vim jq net-tools htop iptables build-essential iputils-ping iproute2 dnsutils ncat
 # install python requirements for yagna_mon.py
 RUN pip install quart requests
 

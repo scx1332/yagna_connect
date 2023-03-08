@@ -10,8 +10,8 @@ export YA_PAYMENT_NETWORK=${NETWORK:-rinkeby}
 export MAX_AGREEMENTS=${MAX_AGREEMENTS:-1}
 export MIN_AGREEMENT_EXPIRATION=${MIN_AGREEMENT_EXPIRATION:-5s}
 
-echo "Waiting for 5 seconds before starting yagna"
-sleep 5
+echo "Waiting for 15 seconds before starting yagna"
+sleep 15
 yagna service run &
 sleep 5
 yagna id list

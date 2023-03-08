@@ -24,6 +24,8 @@ services:
       - yagna_config.env
       - prov1.env
     command: ./run_provider.sh
+    cap_add:
+      - NET_ADMIN
   yagna_requestor_node:
     build:
       dockerfile: Dockerfile_FromSource
@@ -50,3 +52,5 @@ services:
       - "7465:7465"
     env_file:
       - yagna_config.env
+    cap_add:
+      - NET_ADMIN
