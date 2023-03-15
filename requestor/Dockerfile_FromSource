@@ -52,8 +52,8 @@ RUN apt-get update
 RUN apt-get install cmake openssl musl-tools -y
 ARG YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN
 ARG YA_VPN_CONNECTOR_BRANCH
-RUN echo ${YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch ${YA_VPN_CONNECTOR_BRANCH} https://github.com/scx1332/vpn_rust_playground.git vpn_rust_playground
-WORKDIR /vpn_rust_playground
+RUN echo ${YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch ${YA_VPN_CONNECTOR_BRANCH} https://github.com/golemfactory/ya-vpn-connector.git ya-vpn-connector
+WORKDIR /ya-vpn-connector
 RUN cargo build --release
 ARG YA_VPN_CONNECTOR_BUILD_TOKEN
 RUN echo ${YA_VPN_CONNECTOR_BUILD_TOKEN} && git pull
@@ -77,7 +77,7 @@ RUN make
 
 WORKDIR /yagna
 COPY --from=yagna-build /build/yagna /usr/bin
-COPY --from=build-vpn-connector /vpn_rust_playground/target/release/novpn /usr/bin
+COPY --from=build-vpn-connector /ya-vpn-connector/target/release/ya-vpn-connector /usr/bin
 
 COPY *.py ./
 COPY *.sh ./
