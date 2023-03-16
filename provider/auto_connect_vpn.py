@@ -3,7 +3,7 @@ import time
 
 import subprocess
 
-test = True
+test = False
 
 
 def get_default_interface_info():
