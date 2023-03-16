@@ -25,9 +25,8 @@ async def attach_vpn(websocket_addr):
 
     async def spawn_vpn_process_and_wait():
         global vpn_proc
-        if vpn_proc:
-            vpn_proc.kill()
-            await asyncio.sleep(1.0)
+        os.system("pkill ya-vpn-connector")
+        await asyncio.sleep(0.2)
         vpn_proc = await asyncio.create_subprocess_shell(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out, err) = await vpn_proc.communicate()
         vpn_proc = None
@@ -42,6 +41,10 @@ async def attach_vpn(websocket_addr):
     await asyncio.sleep(3.0)
     if vpn_conn_res:
         raise Exception(f"{vpn_conn_res}")
+    # add route via VPN connection
+    comm = f"ip route add default via 192.168.8.7"
+    print(f"Adding route: {comm}")
+    os.system(comm)
 
 
 @app.route('/attach_vpn')
@@ -71,5 +74,51 @@ def run() -> None:
     app.run(host="0.0.0.0", port=3336, use_reloader=False)
 
 
+def get_default_interface_info():
+    command = "ip route show default"
+    result = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = result.communicate()
+    res = out.decode('ascii')
+
+    if not res:
+        raise Exception("Failed to get default interface")
+
+    interface = res.split(" ")
+    if interface[0] != "default":
+        raise Exception(f"Invalid interface {interface[0]}")
+    if interface[1] != "via":
+        raise Exception(f"Invalid via {interface[1]}")
+    if interface[3] != "dev":
+        raise Exception(f"Invalid dev {interface[3]}")
+
+    gateway = interface[2]
+    interface_main = interface[4]
+
+    print(f"Default gateway: {gateway}, main interface: {interface_main}")
+
+    return gateway, interface_main
+
+
 if __name__ == '__main__':
+    # get default gateway
+    gateway, interface_main = get_default_interface_info()
+    print(f"Default gateway: {gateway}, main interface: {interface_main}")
+
+    command = "dig +short host.docker.internal"
+    result = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = result.communicate()
+    res = out.decode('ascii')
+    host_internal_ip = res.strip()
+
+    print(f"Host docker internal: {host_internal_ip}")
+
+    # add route to host internal
+
+    command = f"ip route add {host_internal_ip} via {gateway} dev {interface_main}"
+    os.system(command)
+
+    # delete default route
+    command = f"ip route del default"
+    os.system(command)
+
     run()
