@@ -64,18 +64,14 @@ RUN cargo build --release
 FROM python:3.11
 RUN apt-get update
 # install common helpful tools
-RUN apt-get install -y curl vim jq net-tools htop iptables build-essential iputils-ping iproute2 dnsutils ncat
+RUN apt-get install -y curl vim jq net-tools htop iptables build-essential iputils-ping iproute2 dnsutils ncat tcpdump
 # install python requirements for yagna_mon.py
 RUN pip install quart requests websockets scapy aiohttp
 
 
-WORKDIR /yagna
+WORKDIR /requestor
 
-COPY novpn-c ./novpn-c
-WORKDIR /yagna/novpn-c
-RUN make
-
-WORKDIR /yagna
+WORKDIR /requestor
 COPY --from=yagna-build /build/yagna /usr/bin
 COPY --from=build-vpn-connector /ya-vpn-connector/target/release/ya-vpn-connector /usr/bin
 

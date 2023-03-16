@@ -29,6 +29,7 @@ BEARER_TOKEN = ""
 SUBNET = "vpn"
 API_URL = "http://127.0.0.1:7465"
 API_URL_WEBSOCKETS = "ws://127.0.0.1:7465"
+YAGNA_INTERNAL_WEBSOCKETS = "ws://192.168.65.2:7465"
 
 
 def string_unescape(s, encoding='utf-8'):
@@ -404,7 +405,7 @@ async def accept_debit_notes(agreement, activity, allocation_id):
             # DebitNote, so let's query full DebitNote content.
             debit_note = await send_request(f"{API_URL}/payment-api/v1/debitNotes/{debit_note_id}")
             debit_note = json.loads(debit_note)
-            amount = float(debit_note["totalAmountDue"])
+            amount_exact_str = debit_note["totalAmountDue"]
 
             dump_next_info("debit_note.json", json.dumps(debit_note, indent=4))
 
@@ -416,11 +417,11 @@ async def accept_debit_notes(agreement, activity, allocation_id):
             if debit_note["activityId"] != activity:
                 continue
 
-            logger.info(f"Received DebitNote to amount: {amount}")
+            logger.info(f"Received DebitNote to amount: {float(amount_exact_str)} - exact value {amount_exact_str}")
 
             # In production code we should validate the amount requested here.
             acceptance = {
-                "totalAmountAccepted": amount,
+                "totalAmountAccepted": amount_exact_str,
                 "allocationId": allocation_id,
             }
 
@@ -435,7 +436,7 @@ async def accept_debit_notes(agreement, activity, allocation_id):
             logger.info(
                 "Debit note %s (amount: %s) accepted",
                 debit_note_id,
-                amount,
+                amount_exact_str,
             )
 
 
@@ -485,7 +486,7 @@ async def pay_invoices(agreement, allocation_id, timeout):
             # DebitNote, so let's query full DebitNote content.
             invoice = await send_request(f"{API_URL}/payment-api/v1/invoices/{invoice_id}")
             invoice = json.loads(invoice)
-            amount = float(invoice["amount"])
+            amount_exact_str = invoice["amount"]
 
             dump_next_info("invoice.json", json.dumps(invoice, indent=4))
 
@@ -495,11 +496,11 @@ async def pay_invoices(agreement, allocation_id, timeout):
             if invoice["agreementId"] != agreement:
                 continue
 
-            logger.info(f"Received Invoice to amount: {amount}")
+            logger.info(f"Received Invoice to amount: {float(amount_exact_str)} - exact value {amount_exact_str}")
 
             # In production code we should validate the amount requested here.
             acceptance = {
-                "totalAmountAccepted": amount,
+                "totalAmountAccepted": amount_exact_str,
                 "allocationId": allocation_id,
             }
 
@@ -509,7 +510,7 @@ async def pay_invoices(agreement, allocation_id, timeout):
             logger.info(
                 "Invoice %s (amount: %s) accepted",
                 invoice_id,
-                amount,
+                amount_exact_str,
             )
             return
 
@@ -640,13 +641,14 @@ async def main():
             ws_url = f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}"
             logger.info(ws_url)
 
-            ws_url_quoted = urllib.parse.quote(ws_url, safe='')
+            ws_url_internal = f"{YAGNA_INTERNAL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}"
+            ws_url_quoted = urllib.parse.quote(ws_url_internal, safe='')
             logger.info(ws_url_quoted)
 
-            resp = requests.get(f"http://127.0.0.1:3333/attach_vpn?websocket_address={ws_url_quoted}")
+            resp = requests.get(f"http://127.0.0.1:3336/attach_vpn?websocket_address={ws_url_quoted}")
             logger.info(resp.text)
             for i in range(0, 10000000):
-                resp = requests.get(f"http://127.0.0.1:3333/check_vpn")
+                resp = requests.get(f"http://127.0.0.1:3336/check_vpn")
                 logger.info(f"VPN res: {resp.text}")
                 await asyncio.sleep(1)
 

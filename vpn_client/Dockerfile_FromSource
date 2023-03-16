@@ -1,0 +1,28 @@
+FROM rust as build-vpn-connector
+RUN apt-get update
+RUN apt-get install cmake openssl musl-tools -y
+ARG YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN
+ARG YA_VPN_CONNECTOR_BRANCH
+RUN echo ${YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch ${YA_VPN_CONNECTOR_BRANCH} https://github.com/golemfactory/ya-vpn-connector.git ya-vpn-connector
+WORKDIR /ya-vpn-connector
+RUN cargo build --release
+ARG YA_VPN_CONNECTOR_BUILD_TOKEN
+RUN echo ${YA_VPN_CONNECTOR_BUILD_TOKEN} && git pull
+RUN cargo build --release
+
+FROM python:3.11
+RUN apt-get update
+# install common helpful tools
+RUN apt-get install -y curl vim jq net-tools htop iptables build-essential iputils-ping iproute2 dnsutils ncat tcpdump
+# install python requirements for yagna_mon.py
+RUN pip install quart requests websockets scapy aiohttp
+
+WORKDIR /vpn_client
+COPY --from=build-vpn-connector /ya-vpn-connector/target/release/ya-vpn-connector /usr/bin
+
+COPY *.py ./
+COPY *.sh ./
+RUN chmod +x *.sh
+
+
+

@@ -57,7 +57,20 @@ services:
       - "7465:7465"
     env_file:
       - yagna_config.env
+  vpn_node:
+    build:
+      dockerfile: Dockerfile_FromSource
+      context: ../../vpn_client
+      args:
+        - YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN=${YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN:-1}
+        - YA_VPN_CONNECTOR_BRANCH=${YA_VPN_CONNECTOR_BRANCH:-main}
+        - YA_VPN_CONNECTOR_BUILD_TOKEN=${YA_VPN_CONNECTOR_BUILD_TOKEN:-1}
+    environment:
+      - YAGNA_APPKEY=${YAGNA_APPKEY}
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
+    command: ./run_vpn_client.sh
+    ports:
+      - "3336:3336"

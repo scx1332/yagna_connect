@@ -10,9 +10,9 @@
       "pricing-model": "linear",
       "initial-price": 0.0,
       "usage-coeffs": {
-        "golem.usage.duration_sec": 0.0001,
-        "golem.usage.network.in": 1e-6,
-        "golem.usage.network.out": 1e-6
+        "golem.usage.duration_sec": 1e-12,
+        "golem.usage.network.in": 2e-12,
+        "golem.usage.network.out": 3e-12
       }
     }
   ]
