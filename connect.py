@@ -132,7 +132,7 @@ def dump_next_info(file_name, text):
 
 async def create_demand(sender_address):
     now_datetime = datetime.now(timezone.utc)
-    agreement_validity_timedelta = timedelta(minutes=30)
+    agreement_validity_timedelta = timedelta(minutes=230)
     demand_expiration_datetime = now_datetime + agreement_validity_timedelta
     demand_expiration_timestamp = str(int(demand_expiration_datetime.timestamp() * 1000))
     demand_expiration_formatted = now_datetime.astimezone().isoformat()
@@ -644,6 +644,9 @@ async def main():
             ws_url_internal = f"{YAGNA_INTERNAL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}"
             ws_url_quoted = urllib.parse.quote(ws_url_internal, safe='')
             logger.info(ws_url_quoted)
+
+            # while True:
+            #     await asyncio.sleep(0.5)
 
             resp = requests.get(f"http://127.0.0.1:3336/attach_vpn?websocket_address={ws_url_quoted}")
             logger.info(resp.text)
