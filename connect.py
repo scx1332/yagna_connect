@@ -18,7 +18,7 @@ import os
 import scapy
 from scapy.all import Raw
 from scapy.layers.dns import DNS
-from scapy.layers.inet import IP, in4_chksum, UDP
+from scapy.layers.inet import IP, in4_chksum, UDP, ICMP
 from scapy.layers.l2 import Ether
 
 logging.basicConfig()
@@ -642,36 +642,39 @@ async def main():
             logger.info(ws_url)
 
             ws_url_internal = f"{YAGNA_INTERNAL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}"
+            logger.info(ws_url_internal)
             ws_url_quoted = urllib.parse.quote(ws_url_internal, safe='')
             logger.info(ws_url_quoted)
 
-            # while True:
-            #     await asyncio.sleep(0.5)
+            while True:
+                await asyncio.sleep(0.5)
 
-            resp = requests.get(f"http://127.0.0.1:3336/attach_vpn?websocket_address={ws_url_quoted}")
-            logger.info(resp.text)
-            for i in range(0, 10000000):
-                resp = requests.get(f"http://127.0.0.1:3336/check_vpn")
-                logger.info(f"VPN res: {resp.text}")
-                await asyncio.sleep(1)
-
-            # async with websockets.connect(ws_url,
-            #                               extra_headers=[('Authorization', f'Bearer {bearer_token}')]) as websocket:
-            #     logger.info(f"Connected to websocket")
-            #     while True:
-            #         packet = Ether(dst=100000, src=2332)/IP(src=ip_local, dst=ip_remote)/UDP(sport=1000,
-            #               dport=5000)/Raw(load="Hello World")
-            #         packet_raw = scapy.compat.raw(packet)
-            #         packet.show()
-            #         packet_hex = packet_raw.hex()
-            #         logger.info(f"Sending packet {packet_hex}")
-            #         await websocket.send(packet_raw)
-            #         logger.info(f"Packet sent, waiting for response")
-            #         packet_back = await asyncio.wait_for(websocket.recv(), 10)
-            #         Ether(packet_back).show()
-            #         packet_back_hex = packet_back.hex()
-            #         logger.info(f"Got packet back: {packet_back_hex}")
-            #         await asyncio.sleep(1)
+            if 1:
+                resp = requests.get(f"http://127.0.0.1:3336/attach_vpn?websocket_address={ws_url_quoted}")
+                logger.info(resp.text)
+                for i in range(0, 10000000):
+                    resp = requests.get(f"http://127.0.0.1:3336/check_vpn")
+                    logger.info(f"VPN res: {resp.text}")
+                    await asyncio.sleep(1)
+            else:
+                async with websockets.connect(ws_url,
+                                              extra_headers=[('Authorization', f'Bearer {bearer_token}')]) as websocket:
+                    logger.info(f"Connected to websocket")
+                    while True:
+                        #packet = Ether(dst=100000, src=2332)/IP(src=ip_local, dst=ip_remote)/UDP(sport=1000,
+                        #      dport=5000)/Raw(load="Hello World")
+                        packet = Ether(dst=100000, src=2332)/IP(dst="192.168.8.7", ttl=20)/ICMP()
+                        packet_raw = scapy.compat.raw(packet)
+                        packet.show()
+                        packet_hex = packet_raw.hex()
+                        logger.info(f"Sending packet {packet_hex}")
+                        await websocket.send(packet_raw)
+                        logger.info(f"Packet sent, waiting for response")
+                        packet_back = await asyncio.wait_for(websocket.recv(), 10)
+                        Ether(packet_back).show()
+                        packet_back_hex = packet_back.hex()
+                        logger.info(f"Got packet back: {packet_back_hex}")
+                        await asyncio.sleep(1)
 
         # todo websocket
         # aiohttp.ClientSession()
