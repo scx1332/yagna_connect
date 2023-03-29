@@ -14,7 +14,7 @@ echo "Waiting for 15 seconds before starting yagna"
 sleep 15
 yagna service run &
 sleep 5
-yagna id list
+yagna id list --json
 yagna payment init --receiver --driver erc20 --network $NETWORK
 ya-provider run --max-simultaneous-agreements $MAX_AGREEMENTS --min-agreement-expiration $MIN_AGREEMENT_EXPIRATION
 
