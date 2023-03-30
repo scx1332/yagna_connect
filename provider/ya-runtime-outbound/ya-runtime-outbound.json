@@ -1,0 +1,4 @@
+{
+    "outboundInterface": "eth0",
+    "applyIptablesRules": true
+}

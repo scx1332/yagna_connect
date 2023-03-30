@@ -109,7 +109,7 @@ demand_template = """{
       "golem.com.payment.platform.erc20-rinkeby-tglm.address": "%%SENDER_ADDRESS%%",
       "golem.srv.comp.expiration": %%EXPIRATION%%
    },
-   "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound-gateway)(golem.runtime.capabilities=gateway))"
+   "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound)(golem.runtime.capabilities=outbound))"
 }
 """
 
@@ -646,8 +646,8 @@ async def main():
             ws_url_quoted = urllib.parse.quote(ws_url_internal, safe='')
             logger.info(ws_url_quoted)
 
-            while True:
-                await asyncio.sleep(0.5)
+            # while True:
+            #    await asyncio.sleep(0.5)
 
             if 1:
                 resp = requests.get(f"http://127.0.0.1:3336/attach_vpn?websocket_address={ws_url_quoted}")

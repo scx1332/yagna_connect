@@ -18,17 +18,17 @@ ARG YA_RUNTIME_OUTBOUND_BUILD_TOKEN=e4710e60-c8ca-443d-9d7a-6962fc9b8442
 # branch
 ARG YA_RUNTIME_OUTBOUND_BRANCH=master
 
-FROM rust as ya-runtime-outbound-gateway
+FROM rust as ya-runtime-outbound
 RUN apt-get update
 RUN apt-get install cmake openssl musl-tools -y
 ARG YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN
 ARG YA_RUNTIME_OUTBOUND_BRANCH
-RUN echo ${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch ${YA_RUNTIME_OUTBOUND_BRANCH} https://github.com/golemfactory/ya-runtime-outbound-gateway.git ya-runtime-outbound-gateway
-WORKDIR /ya-runtime-outbound-gateway
-RUN cargo build --release -p ya-runtime-outbound-gateway
+RUN echo ${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch ${YA_RUNTIME_OUTBOUND_BRANCH} https://github.com/golemfactory/ya-runtime-outbound.git ya-runtime-outbound
+WORKDIR /ya-runtime-outbound
+RUN cargo build --release -p ya-runtime-outbound
 ARG YA_RUNTIME_OUTBOUND_BUILD_TOKEN
 RUN echo ${YA_RUNTIME_OUTBOUND_BUILD_TOKEN} && git pull
-RUN cargo build --release -p ya-runtime-outbound-gateway
+RUN cargo build --release -p ya-runtime-outbound
 
 
 
@@ -81,9 +81,10 @@ COPY --from=yagna-build /build/golemsp /usr/bin
 COPY --from=yagna-build /build/exe-unit /root/.local/lib/yagna/plugins/exe-unit
 
 COPY ya-provider /root/.local/share/ya-provider
+COPY ya-runtime-outbound /root/.local/share/ya-runtime-outbound
 
-COPY --from=ya-runtime-outbound-gateway /ya-runtime-outbound-gateway/target/release/ya-runtime-outbound-gateway /root/.local/lib/yagna/plugins/ya-runtime-outbound-gateway/ya-runtime-outbound-gateway
-COPY --from=ya-runtime-outbound-gateway /ya-runtime-outbound-gateway/conf/ya-runtime-outbound-gateway.json /root/.local/lib/yagna/plugins/ya-runtime-outbound-gateway.json
+COPY --from=ya-runtime-outbound /ya-runtime-outbound/target/release/ya-runtime-outbound /root/.local/lib/yagna/plugins/ya-runtime-outbound/ya-runtime-outbound
+COPY --from=ya-runtime-outbound /ya-runtime-outbound/conf/ya-runtime-outbound.json /root/.local/lib/yagna/plugins/ya-runtime-outbound.json
 
 COPY *.py .
 COPY *.sh .

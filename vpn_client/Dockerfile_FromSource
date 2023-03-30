@@ -10,6 +10,18 @@ ARG YA_VPN_CONNECTOR_BUILD_TOKEN
 RUN echo ${YA_VPN_CONNECTOR_BUILD_TOKEN} && git pull
 RUN cargo build --release
 
+FROM rust as build-pipe_downloader
+RUN apt-get update
+RUN apt-get install cmake openssl musl-tools -y
+ARG PIPE_DOWNLOADER_GIT_CLONE_CACHE_TOKEN
+ARG PIPE_DOWNLOADER_BRANCH
+RUN echo ${PIPE_DOWNLOADER_GIT_CLONE_CACHE_TOKEN} && git clone --single-branch --branch ${PIPE_DOWNLOADER_BRANCH} https://github.com/scx1332/pipe_downloader.git pipe_downloader
+WORKDIR /pipe_downloader
+RUN cargo build --release --all
+ARG PIPE_DOWNLOADER_BUILD_TOKEN
+RUN echo ${PIPE_DOWNLOADER_BUILD_TOKEN} && git pull
+RUN cargo build --release --all
+
 FROM python:3.11
 RUN apt-get update
 # install common helpful tools
@@ -19,6 +31,7 @@ RUN pip install quart requests websockets scapy aiohttp
 
 WORKDIR /vpn_client
 COPY --from=build-vpn-connector /ya-vpn-connector/target/release/ya-vpn-connector /usr/bin
+COPY --from=build-pipe_downloader /pipe_downloader/target/release/pipe_udp_server /usr/bin
 
 COPY *.py ./
 COPY *.sh ./

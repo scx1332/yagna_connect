@@ -6,7 +6,7 @@
   "presets": [
     {
       "name": "vpn",
-      "exeunit-name": "outbound-gateway",
+      "exeunit-name": "outbound",
       "pricing-model": "linear",
       "initial-price": 0.0,
       "usage-coeffs": {
