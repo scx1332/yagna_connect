@@ -25,7 +25,7 @@ async def attach_vpn(websocket_addr):
 
     async def spawn_vpn_process_and_wait():
         global vpn_proc
-        os.system("pkill ya-vpn-connector")
+        os.system("pkill -f ya-vpn-connector")
         await asyncio.sleep(0.2)
         vpn_proc = await asyncio.create_subprocess_shell(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out, err) = await vpn_proc.communicate()

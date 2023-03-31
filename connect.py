@@ -223,6 +223,7 @@ async def negotiate_agreement(sender_address):
                         "proposalId": proposal_id,
                         "validTo": valid_to_formatted
                     }
+                    dump_next_info("agreement_proposal.json", json.dumps(agreement_proposal, indent=4))
 
                     logger.info(f"Creating Agreement for: {proposal_id}")
                     create_agreement = await send_request(f"{API_URL}/market-api/v1/agreements", method="post",
@@ -366,7 +367,7 @@ async def release_allocation(allocation_id):
     logger.info(f"Allocation: {allocation_id} released")
 
 
-async def accept_debit_notes(agreement, activity, allocation_id):
+async def accept_debit_notes(agreement, activity, allocation_id, pricing, usage_vector):
     ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     logger.info("Listening for debit note events")
 
@@ -413,13 +414,45 @@ async def accept_debit_notes(agreement, activity, allocation_id):
             # On this endpoint we could get DebitNotes for all Agreements created using
             # the same identity.
             if debit_note["agreementId"] != agreement:
+                logger.error(f"DebitNote for wrong agreement: {debit_note['agreementId']}")
                 continue
             if debit_note["activityId"] != activity:
+                logger.error(f"DebitNote for wrong activity: {debit_note['activityId']}")
                 continue
 
-            logger.info(f"Received DebitNote to amount: {float(amount_exact_str)} - exact value {amount_exact_str}")
+            # Check if DebitNote is for correct usage vector.
+            usage_counter = debit_note["usageCounterVector"]
+            if len(usage_counter) != len(usage_vector):
+                logger.error("Invalid usage vector length in debit note")
+                continue
 
-            # In production code we should validate the amount requested here.
+            usage_dict = {}
+            for i in range(len(usage_counter)):
+                usage_dict[usage_vector[i]] = usage_counter[i]
+
+            per_sec_price = float(pricing['golem.usage.duration_sec'])
+            seconds_elapsed = float(usage_dict['golem.usage.duration_sec'])
+            logger.info(f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
+
+            per_mb_price_in = float(pricing['golem.usage.network.in-mib'])
+            mb_in = float(usage_dict['golem.usage.network.in-mib'])
+            logger.info(f"Incoming per MiB( total({mb_in * per_mb_price_in}) used: {mb_in}MiB price: {per_mb_price_in}")
+
+            per_mb_price_out = float(pricing['golem.usage.network.out-mib'])
+            mb_out = float(usage_dict['golem.usage.network.out-mib'])
+            logger.info(f"Outgoing per MiB( total({mb_out * per_mb_price_out}) used: {mb_out}MiB price: {per_mb_price_out}")
+
+            total_price = per_sec_price * seconds_elapsed + per_mb_price_in * mb_in + per_mb_price_out * mb_out
+
+            if float(amount_exact_str) > 0.0:
+                relative_difference = total_price / float(amount_exact_str)
+                absolute_difference = abs(total_price - float(amount_exact_str))
+                if 0.9999 < relative_difference < 1.0001 or absolute_difference < 1.0E-12:
+                    logger.info("Debit note amount matches usage {} equal or almost equal {}".format(total_price, amount_exact_str))
+                else:
+                    logger.error("Debit note amount does not match usage {} not equal {}".format(total_price, amount_exact_str))
+                    continue
+
             acceptance = {
                 "totalAmountAccepted": amount_exact_str,
                 "allocationId": allocation_id,
@@ -548,9 +581,32 @@ async def main():
         # consists of final Proposals (Demand and Offer) from negotiation stage and we could
         # already keep track of these information.
         # Showing this method just for convenience.
-        aggreement_resp = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}")
-        aggreement = json.loads(aggreement_resp)
-        provider_id = aggreement['offer']['providerId']
+        agreement_resp = await send_request(f"{API_URL}/market-api/v1/agreements/{agreement_id}")
+        agreement = json.loads(agreement_resp)
+        dump_next_info("agreement.json", json.dumps(agreement, indent=4))
+        provider_id = agreement['offer']['providerId']
+
+        usage_vector = agreement['offer']['properties']['golem.com.usage.vector']
+        usage_pricing = agreement['offer']['properties']["golem.com.pricing.model.linear.coeffs"]
+        expected_params = ["golem.usage.duration_sec", "golem.usage.network.in-mib", "golem.usage.network.out-mib"]
+
+        if len(usage_vector) != len(expected_params):
+            # it would be hard to process unknown parameters
+            raise Exception(f"Expected {len(expected_params)} params in usage vector, got {len(usage_vector)}")
+        for expected_param in expected_params:
+            if expected_param not in usage_vector:
+                raise Exception(f"Expected param {expected_param} not found in usage vector")
+
+        pricing = dict(zip(usage_vector + ["start"], usage_pricing))
+        if pricing["start"] != 0:
+            raise Exception("Expected start price to be 0")
+
+        logger.info(f"Price per second: {pricing['golem.usage.duration_sec']}")
+        logger.info(f"Price incoming per MiB: {pricing['golem.usage.network.in-mib']}")
+        logger.info(f"Price outgoing per MiB: {pricing['golem.usage.network.out-mib']}")
+
+
+
 
         # Computations are done in the context of Activity, so we need to create one.
         # Single Agreement can have multiple activities created after each other.
@@ -569,7 +625,7 @@ async def main():
         # Provider will start sending DebitNotes in intervals.
         # We need background task, that will validate and accept them to sustain the Agreement.
         if not ignore_payments:
-            asyncio.create_task(accept_debit_notes(agreement_id, activity_id, allocation_id))
+            asyncio.create_task(accept_debit_notes(agreement_id, activity_id, allocation_id, pricing, usage_vector))
 
         (network, local_ip, ip_remote) = await create_network()
         net_id = network["id"]
@@ -655,7 +711,8 @@ async def main():
                 for i in range(0, 10000000):
                     resp = requests.get(f"http://127.0.0.1:3336/check_vpn")
                     logger.info(f"VPN res: {resp.text}")
-                    await asyncio.sleep(1)
+                    for _i in range(0, 15):
+                        await asyncio.sleep(1)
             else:
                 async with websockets.connect(ws_url,
                                               extra_headers=[('Authorization', f'Bearer {bearer_token}')]) as websocket:
