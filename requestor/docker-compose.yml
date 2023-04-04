@@ -3,6 +3,8 @@ services:
     build:
       dockerfile: Dockerfile
       context: .
+      args:
+        - YAGNA_RELEASE_TAG=${YAGNA_RELEASE_TAG:-pre-rel-v0.13.0-raw-rc4}
     volumes:
       - "./yagna_dir:/root/.local/share/yagna"
     environment:

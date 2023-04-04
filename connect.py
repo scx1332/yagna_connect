@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 BEARER_TOKEN = ""
-SUBNET = "vpn"
+SUBNET = ""
 API_URL = "http://127.0.0.1:7465"
 API_URL_WEBSOCKETS = "ws://127.0.0.1:7465"
 YAGNA_INTERNAL_WEBSOCKETS = "ws://192.168.65.2:7465"
@@ -553,13 +553,18 @@ async def main():
         prog='ConnectVPN',
         description='Simple demo script for outbound VPN activity')
     parser.add_argument('--key', help='API key', required=True)
+    parser.add_argument('--subnet', help='Subnet', required=True)
+    parser.add_argument('--autoconnect', help='Autoconnect', action='store_true')
     parser.add_argument('--debug-ignore-payments', help='Ignore payments', action='store_true')
     global bearer_token
     bearer_token = parser.parse_args().key
+    global SUBNET
+    SUBNET = parser.parse_args().subnet
     ignore_payments = parser.parse_args().debug_ignore_payments
     if ignore_payments:
         logger.warning(f"Payments ignored: {ignore_payments}. This is not proper way to use yagna, only for DEBUGGING.")
 
+    autoconnect = parser.parse_args().autoconnect
     await prepare_tmp_directory()
 
     me_data = await send_request(f"{API_URL}/me")
@@ -702,8 +707,10 @@ async def main():
             ws_url_quoted = urllib.parse.quote(ws_url_internal, safe='')
             logger.info(ws_url_quoted)
 
-            # while True:
-            #    await asyncio.sleep(0.5)
+            if not autoconnect:
+                print("Waiting in loop - connect manually")
+                while True:
+                    await asyncio.sleep(0.5)
 
             if 1:
                 resp = requests.get(f"http://127.0.0.1:3336/attach_vpn?websocket_address={ws_url_quoted}")
