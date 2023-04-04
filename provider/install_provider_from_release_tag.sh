@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+set -ex
 mkdir tmp
 cd tmp
 wget -O- https://github.com/golemfactory/yagna/releases/download/$1/golem-provider-linux-$1.tar.gz | tar -xzf -
