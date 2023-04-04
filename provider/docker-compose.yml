@@ -4,7 +4,8 @@ services:
       dockerfile: Dockerfile
       context: .
       args:
-        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
+        - YAGNA_RELEASE_TAG=${YAGNA_RELEASE_TAG:-pre-rel-v0.13.0-raw-rc4}
+        - RUNTIME_OUTBOUND_RELEASE_TAG=${RUNTIME_OUTBOUND_RELEASE_TAG:-v0.2.5}
     env_file:
       - ../common_yagna_config.env
       - prov1.env
