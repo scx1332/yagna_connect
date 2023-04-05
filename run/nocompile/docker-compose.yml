@@ -1,0 +1,76 @@
+services:
+  centralnet:
+    build:
+      dockerfile: Dockerfile
+      context: ../../centralnet
+      args:
+        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
+    command: ./run_centralnet.sh
+  prov1:
+    build:
+      dockerfile: Dockerfile_FromSource
+      context: ../../provider
+      args:
+        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
+        - YA_RUNTIME_OUTBOUND_BUILD_TOKEN=${YA_RUNTIME_OUTBOUND_BUILD_TOKEN:-1}
+        - YA_RUNTIME_OUTBOUND_BRANCH=${YA_RUNTIME_OUTBOUND_BRANCH:-scx1332/vpn}
+        - YAGNA_GIT_CLONE_CACHE_TOKEN=${YAGNA_GIT_CLONE_CACHE_TOKEN:-1}
+        - YAGNA_INCREMENTAL_BUILD_TOKEN=${YAGNA_INCREMENTAL_BUILD_TOKEN:-1}
+        - YAGNA_BRANCH_OR_TAG=${YAGNA_BRANCH_OR_TAG:-scx1332/vpn}
+        - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
+        - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
+        - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+    env_file:
+      - yagna_config.env
+      - prov1.env
+    command: ./run_provider.sh
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+  yagna_requestor_node:
+    build:
+      dockerfile: Dockerfile_FromSource
+      context: ../../requestor
+      args:
+        - YAGNA_GIT_CLONE_CACHE_TOKEN=${YAGNA_GIT_CLONE_CACHE_TOKEN:-1}
+        - YAGNA_INCREMENTAL_BUILD_TOKEN=${YAGNA_INCREMENTAL_BUILD_TOKEN:-1}
+        - YAGNA_BRANCH_OR_TAG=${YAGNA_BRANCH_OR_TAG:-scx1332/vpn}
+        - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
+        - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
+        - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+    volumes:
+      - "./yagna_dir:/root/.local/share/yagna"
+    environment:
+      - GSB_URL=tcp://0.0.0.0:7464
+      - YAGNA_API_URL=http://0.0.0.0:7465
+      - YAGNA_APPKEY=${YAGNA_APPKEY}
+      - YAGNA_AUTOCONF_ID_SECRET=${YAGNA_AUTOCONF_ID_SECRET}
+      - YAGNA_AUTOCONF_APPKEY=${YAGNA_APPKEY}
+    command: ./run_requestor.sh
+    ports:
+      - "3333:3333"
+      - "7464:7464"
+      - "7465:7465"
+    env_file:
+      - yagna_config.env
+  vpn_node:
+    build:
+      dockerfile: Dockerfile_FromSource
+      context: ../../vpn_client
+      args:
+        - YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN=${YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN:-1}
+        - YA_VPN_CONNECTOR_BRANCH=${YA_VPN_CONNECTOR_BRANCH:-main}
+        - YA_VPN_CONNECTOR_BUILD_TOKEN=${YA_VPN_CONNECTOR_BUILD_TOKEN:-1}
+        - PIPE_DOWNLOADER_GIT_CLONE_CACHE_TOKEN=${PIPE_DOWNLOADER_GIT_CLONE_CACHE_TOKEN:-1}
+        - PIPE_DOWNLOADER_BRANCH=${PIPE_DOWNLOADER_BRANCH:-main}
+        - PIPE_DOWNLOADER_BUILD_TOKEN=${PIPE_DOWNLOADER_BUILD_TOKEN:-1}
+    environment:
+      - YAGNA_APPKEY=${YAGNA_APPKEY}
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    command: ./run_vpn_client.sh
+    ports:
+      - "3336:3336"
