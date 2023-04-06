@@ -5,7 +5,7 @@ services:
       context: .
       args:
         - YAGNA_RELEASE_TAG=${YAGNA_RELEASE_TAG:-pre-rel-v0.13.0-raw-rc4}
-        - RUNTIME_OUTBOUND_RELEASE_TAG=${RUNTIME_OUTBOUND_RELEASE_TAG:-v0.3.0}
+        - RUNTIME_OUTBOUND_RELEASE_TAG=${RUNTIME_OUTBOUND_RELEASE_TAG:-v0.3.5}
     env_file:
       - ../common_yagna_config.env
       - prov1.env

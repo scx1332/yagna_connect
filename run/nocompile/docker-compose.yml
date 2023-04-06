@@ -3,23 +3,14 @@ services:
     build:
       dockerfile: Dockerfile
       context: ../../centralnet
-      args:
-        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
     command: ./run_centralnet.sh
   prov1:
     build:
-      dockerfile: Dockerfile_FromSource
+      dockerfile: Dockerfile
       context: ../../provider
       args:
-        - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
-        - YA_RUNTIME_OUTBOUND_BUILD_TOKEN=${YA_RUNTIME_OUTBOUND_BUILD_TOKEN:-1}
-        - YA_RUNTIME_OUTBOUND_BRANCH=${YA_RUNTIME_OUTBOUND_BRANCH:-scx1332/vpn}
-        - YAGNA_GIT_CLONE_CACHE_TOKEN=${YAGNA_GIT_CLONE_CACHE_TOKEN:-1}
-        - YAGNA_INCREMENTAL_BUILD_TOKEN=${YAGNA_INCREMENTAL_BUILD_TOKEN:-1}
-        - YAGNA_BRANCH_OR_TAG=${YAGNA_BRANCH_OR_TAG:-scx1332/vpn}
-        - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
-        - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
-        - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+        - YAGNA_RELEASE_TAG=${YAGNA_RELEASE_TAG:-pre-rel-v0.13.0-raw-rc4}
+        - RUNTIME_OUTBOUND_RELEASE_TAG=${RUNTIME_OUTBOUND_RELEASE_TAG:-v0.3.5}
     env_file:
       - yagna_config.env
       - prov1.env
@@ -28,17 +19,12 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-  yagna_requestor_node:
+  req:
     build:
-      dockerfile: Dockerfile_FromSource
+      dockerfile: Dockerfile
       context: ../../requestor
       args:
-        - YAGNA_GIT_CLONE_CACHE_TOKEN=${YAGNA_GIT_CLONE_CACHE_TOKEN:-1}
-        - YAGNA_INCREMENTAL_BUILD_TOKEN=${YAGNA_INCREMENTAL_BUILD_TOKEN:-1}
-        - YAGNA_BRANCH_OR_TAG=${YAGNA_BRANCH_OR_TAG:-scx1332/vpn}
-        - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
-        - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
-        - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+        - YAGNA_RELEASE_TAG=${YAGNA_RELEASE_TAG:-pre-rel-v0.13.0-raw-rc4}
     volumes:
       - "./yagna_dir:/root/.local/share/yagna"
     environment:
@@ -54,17 +40,12 @@ services:
       - "7465:7465"
     env_file:
       - yagna_config.env
-  vpn_node:
+  vpn:
     build:
-      dockerfile: Dockerfile_FromSource
+      dockerfile: Dockerfile
       context: ../../vpn_client
       args:
-        - YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN=${YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN:-1}
-        - YA_VPN_CONNECTOR_BRANCH=${YA_VPN_CONNECTOR_BRANCH:-main}
-        - YA_VPN_CONNECTOR_BUILD_TOKEN=${YA_VPN_CONNECTOR_BUILD_TOKEN:-1}
-        - PIPE_DOWNLOADER_GIT_CLONE_CACHE_TOKEN=${PIPE_DOWNLOADER_GIT_CLONE_CACHE_TOKEN:-1}
-        - PIPE_DOWNLOADER_BRANCH=${PIPE_DOWNLOADER_BRANCH:-main}
-        - PIPE_DOWNLOADER_BUILD_TOKEN=${PIPE_DOWNLOADER_BUILD_TOKEN:-1}
+        - CONNECTOR_RELEASE_TAG=${CONNECTOR_RELEASE_TAG:-v0.2.6}
     environment:
       - YAGNA_APPKEY=${YAGNA_APPKEY}
     cap_add:

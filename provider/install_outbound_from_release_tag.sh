@@ -2,7 +2,7 @@
 set -ex
 mkdir tmp
 cd tmp
-wget -O- https://github.com/golemfactory/ya-runtime-outbound/releases/download/$1/ya-runtime-outbound-linux-x86_64.gz | gunzip > ya-runtime-outbound
+wget -O- https://github.com/golemfactory/ya-runtime-outbound/releases/download/$1/ya-runtime-outbound-linux-x86_64.tar.xz | xz --decompress | tar -xf -
 wget https://github.com/golemfactory/ya-runtime-outbound/releases/download/$1/ya-runtime-outbound.json
 mkdir -p ~/.local/lib/yagna/plugins
 mkdir -p ~/.local/lib/yagna/plugins/ya-runtime-outbound

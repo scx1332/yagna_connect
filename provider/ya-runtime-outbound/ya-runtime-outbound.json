@@ -1,4 +1,6 @@
 {
     "outboundInterface": "eth0",
-    "applyIptablesRules": true
+    "applyIptablesRules": true,
+    "allowPacketsToLocal": true,
+    "printPacketErrors": true
 }
