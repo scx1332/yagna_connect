@@ -1,4 +1,12 @@
 #!/bin/bash
+if [ -z ${1+x} ]; then
+  echo "Need argument with release tag or NO_INSTALL";
+  exit 0
+fi
+if [ "$1" == "NO_INSTALL" ]; then
+  echo "Skipping installation of VM runtime"
+  exit 0
+fi
 set -ex
 mkdir tmp
 cd tmp
