@@ -20,6 +20,7 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
+      - /dev/kvm:/dev/kvm
   req:
     build:
       dockerfile: Dockerfile

@@ -1,9 +1,20 @@
 {
   "ver": "V1",
   "active": [
+    "vm",
     "vpn"
   ],
   "presets": [
+    {
+      "name": "vm",
+      "exeunit-name": "vm",
+      "pricing-model": "linear",
+      "initial-price": 0.0,
+      "usage-coeffs": {
+        "golem.usage.cpu_sec": 1e-12,
+        "golem.usage.duration_sec": 1e-12
+      }
+    },
     {
       "name": "vpn",
       "exeunit-name": "outbound",

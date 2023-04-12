@@ -101,7 +101,7 @@ async def send_request(url, method="get", data=None):
         raise PostException(f"aiohttp.ClientConnectorError: {ex}")
 
 
-demand_template = """{
+demand_template_outbound = """{
    "properties":{
       "golem.com.payment.debit-notes.accept-timeout?": 240,
       "golem.node.debug.subnet": "%%SUBNET%%",
@@ -110,6 +110,18 @@ demand_template = """{
       "golem.srv.comp.expiration": %%EXPIRATION%%
    },
    "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=outbound)(golem.runtime.capabilities=outbound))"
+}
+"""
+
+demand_template_vm = """{
+   "properties":{
+      "golem.com.payment.debit-notes.accept-timeout?": 240,
+      "golem.node.debug.subnet": "%%SUBNET%%",
+      "golem.com.payment.chosen-platform": "erc20-rinkeby-tglm",
+      "golem.com.payment.platform.erc20-rinkeby-tglm.address": "%%SENDER_ADDRESS%%",
+      "golem.srv.comp.expiration": %%EXPIRATION%%
+   },
+   "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=vm))"
 }
 """
 
@@ -130,7 +142,7 @@ def dump_next_info(file_name, text):
     next_info += 1
 
 
-async def create_demand(sender_address):
+async def create_demand(sender_address, demand_template):
     now_datetime = datetime.now(timezone.utc)
     agreement_validity_timedelta = timedelta(minutes=230)
     demand_expiration_datetime = now_datetime + agreement_validity_timedelta
@@ -161,8 +173,13 @@ async def create_demand(sender_address):
 # This function will negotiate single Agreement with the first Provider that will respond
 # to us. In normal use cases probably we would like to have more advanced market strategy
 # which scores different Proposals based on the price requested in relation to resources offered.
-async def negotiate_agreement(sender_address):
-    demand_id, demand = await create_demand(sender_address)
+async def negotiate_agreement(sender_address, runtime_type):
+    if runtime_type == "vm":
+        demand_id, demand = await create_demand(sender_address, demand_template_vm)
+    elif runtime_type == "outbound":
+        demand_id, demand = await create_demand(sender_address, demand_template_outbound)
+    else:
+        raise Exception("Unknown type")
 
     while True:
         max_events = 5
@@ -578,7 +595,8 @@ async def main():
 
     # To compute anything, we need to sign Agreement with at least one Provider.
     # This function implements whole negotiations process and returns negotiated Agreement.
-    agreement_id = await negotiate_agreement(sender_address)
+    runtime_type = "vm"
+    agreement_id = await negotiate_agreement(sender_address, runtime_type)
     logger.info(f"Agreement id successfully negotiated: {agreement_id}")
 
     try:
@@ -593,8 +611,12 @@ async def main():
 
         usage_vector = agreement['offer']['properties']['golem.com.usage.vector']
         usage_pricing = agreement['offer']['properties']["golem.com.pricing.model.linear.coeffs"]
-        expected_params = ["golem.usage.duration_sec", "golem.usage.network.in-mib", "golem.usage.network.out-mib"]
-
+        if runtime_type == "outbound":
+            expected_params = ["golem.usage.duration_sec", "golem.usage.network.in-mib", "golem.usage.network.out-mib"]
+        elif runtime_type == "vm":
+            expected_params = ['golem.usage.cpu_sec', 'golem.usage.duration_sec']
+        else:
+            raise Exception(f"Unknown runtime type: {runtime_type}")
         if len(usage_vector) != len(expected_params):
             # it would be hard to process unknown parameters
             raise Exception(f"Expected {len(expected_params)} params in usage vector, got {len(usage_vector)}")
@@ -607,10 +629,14 @@ async def main():
             raise Exception("Expected start price to be 0")
 
         logger.info(f"Price per second: {pricing['golem.usage.duration_sec']}")
-        logger.info(f"Price incoming per MiB: {pricing['golem.usage.network.in-mib']}")
-        logger.info(f"Price outgoing per MiB: {pricing['golem.usage.network.out-mib']}")
 
-
+        if runtime_type == "outbound":
+            logger.info(f"Price incoming per MiB: {pricing['golem.usage.network.in-mib']}")
+            logger.info(f"Price outgoing per MiB: {pricing['golem.usage.network.out-mib']}")
+        elif runtime_type == "vm":
+            logger.info(f"Price per CPU time: {pricing['golem.usage.cpu_sec']}")
+        else:
+            raise Exception(f"Unknown runtime type: {runtime_type}")
 
 
         # Computations are done in the context of Activity, so we need to create one.
