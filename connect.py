@@ -119,7 +119,9 @@ demand_template_vm = """{
       "golem.node.debug.subnet": "%%SUBNET%%",
       "golem.com.payment.chosen-platform": "erc20-rinkeby-tglm",
       "golem.com.payment.platform.erc20-rinkeby-tglm.address": "%%SENDER_ADDRESS%%",
-      "golem.srv.comp.expiration": %%EXPIRATION%%
+      "golem.srv.comp.expiration": %%EXPIRATION%%,
+      "golem.srv.comp.task_package":"%%PACKAGE_URL%%",
+      "golem.srv.comp.vm.package_format": "gvmkit-squash"
    },
    "constraints":"(&(golem.node.debug.subnet=%%SUBNET%%)(golem.com.payment.platform.erc20-rinkeby-tglm.address=*)(golem.com.pricing.model=linear)(golem.runtime.name=vm))"
 }
@@ -142,7 +144,7 @@ def dump_next_info(file_name, text):
     next_info += 1
 
 
-async def create_demand(sender_address, demand_template):
+async def create_demand(sender_address, demand_template, package_url=None):
     now_datetime = datetime.now(timezone.utc)
     agreement_validity_timedelta = timedelta(minutes=230)
     demand_expiration_datetime = now_datetime + agreement_validity_timedelta
@@ -150,10 +152,14 @@ async def create_demand(sender_address, demand_template):
     demand_expiration_formatted = now_datetime.astimezone().isoformat()
     logger.info(f"Setting demand expiration to {demand_expiration_formatted} timestamp {demand_expiration_timestamp}")
 
-    demand = json.loads(demand_template
-                        .replace("%%EXPIRATION%%", demand_expiration_timestamp)
-                        .replace("%%SENDER_ADDRESS%%", sender_address)
-                        .replace("%%SUBNET%%", SUBNET))
+    # in production code it is preferred to use demand builder
+    dt = demand_template
+    dt = dt.replace("%%EXPIRATION%%", demand_expiration_timestamp)
+    dt = dt.replace("%%SENDER_ADDRESS%%", sender_address)
+    dt = dt.replace("%%SUBNET%%", SUBNET)
+    if package_url:
+        dt = dt.replace("%%PACKAGE_URL%%", package_url)
+    demand = json.loads(dt)
 
     dump_next_info("demand.json", json.dumps(demand, indent=4))
 
@@ -175,7 +181,8 @@ async def create_demand(sender_address, demand_template):
 # which scores different Proposals based on the price requested in relation to resources offered.
 async def negotiate_agreement(sender_address, runtime_type):
     if runtime_type == "vm":
-        demand_id, demand = await create_demand(sender_address, demand_template_vm)
+        package_url = "hash:sha3:355e4888733b03fea786c800ad50195834f3b66929f2b34d17c9dc35:http://girepo.dev.golem.network:8000/praqma-network-multitool-latest-1631e536ed.gvmi"
+        demand_id, demand = await create_demand(sender_address, demand_template_vm, package_url=package_url)
     elif runtime_type == "outbound":
         demand_id, demand = await create_demand(sender_address, demand_template_outbound)
     else:
@@ -384,7 +391,94 @@ async def release_allocation(allocation_id):
     logger.info(f"Allocation: {allocation_id} released")
 
 
-async def accept_debit_notes(agreement, activity, allocation_id, pricing, usage_vector):
+async def process_debit_note(debit_note, runtime_type, agreement, activity, allocation_id, pricing, usage_vector):
+    debit_note_id = debit_note["debitNoteId"]
+    ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    amount_exact_str = debit_note["totalAmountDue"]
+
+    dump_next_info("debit_note.json", json.dumps(debit_note, indent=4))
+
+    # Check if DebitNote is for Agreement and Activity that we created.
+    # On this endpoint we could get DebitNotes for all Agreements created using
+    # the same identity.
+    if debit_note["agreementId"] != agreement:
+        logger.error(f"DebitNote for wrong agreement: {debit_note['agreementId']}")
+        raise Exception(f"DebitNote for wrong agreement: {debit_note['agreementId']}")
+    if debit_note["activityId"] != activity:
+        logger.error(f"DebitNote for wrong activity: {debit_note['activityId']}")
+        raise Exception(f"DebitNote for wrong activity: {debit_note['activityId']}")
+
+    # Check if DebitNote is for correct usage vector.
+    usage_counter = debit_note["usageCounterVector"]
+    if len(usage_counter) != len(usage_vector):
+        logger.error("Invalid usage vector length in debit note")
+        raise Exception("Invalid usage vector length in debit note")
+
+
+    usage_dict = {}
+    for i in range(len(usage_counter)):
+        usage_dict[usage_vector[i]] = usage_counter[i]
+
+    total_price = 0.0
+    if runtime_type == "outbound":
+        per_sec_price = float(pricing['golem.usage.duration_sec'])
+        seconds_elapsed = float(usage_dict['golem.usage.duration_sec'])
+        logger.info(f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
+
+        per_mb_price_in = float(pricing['golem.usage.network.in-mib'])
+        mb_in = float(usage_dict['golem.usage.network.in-mib'])
+        logger.info(f"Incoming per MiB( total({mb_in * per_mb_price_in}) used: {mb_in}MiB price: {per_mb_price_in}")
+
+        per_mb_price_out = float(pricing['golem.usage.network.out-mib'])
+        mb_out = float(usage_dict['golem.usage.network.out-mib'])
+        logger.info(f"Outgoing per MiB( total({mb_out * per_mb_price_out}) used: {mb_out}MiB price: {per_mb_price_out}")
+
+        total_price = per_sec_price * seconds_elapsed + per_mb_price_in * mb_in + per_mb_price_out * mb_out
+    elif runtime_type == "vm":
+        per_sec_price = float(pricing['golem.usage.duration_sec'])
+        seconds_elapsed = float(usage_dict['golem.usage.duration_sec'])
+        logger.info(f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
+
+        per_cpu_price = float(pricing['golem.usage.cpu_sec'])
+        cpu_secs = float(usage_dict['golem.usage.cpu_sec'])
+        logger.info(f"CPU seconds( total({cpu_secs * per_cpu_price}) used: {cpu_secs}s price: {per_cpu_price}")
+
+        total_price = per_sec_price * seconds_elapsed + per_cpu_price * cpu_secs
+    else:
+        raise Exception("Unknown runtime type: {}".format(runtime_type))
+
+    if float(amount_exact_str) > 0.0:
+        relative_difference = total_price / float(amount_exact_str)
+        absolute_difference = abs(total_price - float(amount_exact_str))
+        if 0.9999 < relative_difference < 1.0001 or absolute_difference < 1.0E-12:
+            logger.info("Debit note amount matches usage {} equal or almost equal {}".format(total_price, amount_exact_str))
+        else:
+            logger.error("Debit note amount does not match usage {} not equal {}".format(total_price, amount_exact_str))
+            raise Exception("Debit note amount does not match usage {} not equal {}".format(total_price, amount_exact_str))
+
+    acceptance = {
+        "totalAmountAccepted": amount_exact_str,
+        "allocationId": allocation_id,
+    }
+
+    # Accepting DebitNotes means, that we agree to pay amount specified in this DebitNote.
+    # If we don't agree to pay, we should immediately reject DebitNote and break Agreement.
+    # Anyway if we don't accept DebitNotes, then Provider will break Agreement himself.
+    # In general, it is better to accept DebitNotes, otherwise Providers may not want to
+    # cooperate with us.
+    await send_request(f"{API_URL}/payment-api/v1/debitNotes/{debit_note_id}/accept", method="post",
+                       data=json.dumps(acceptance))
+
+    logger.info(
+        "Debit note %s (amount: %s) accepted",
+        debit_note_id,
+        amount_exact_str,
+    )
+
+
+
+
+async def accept_debit_notes(runtime_type, agreement, activity, allocation_id, pricing, usage_vector):
     ts = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     logger.info("Listening for debit note events")
 
@@ -423,71 +517,7 @@ async def accept_debit_notes(agreement, activity, allocation_id, pricing, usage_
             # DebitNote, so let's query full DebitNote content.
             debit_note = await send_request(f"{API_URL}/payment-api/v1/debitNotes/{debit_note_id}")
             debit_note = json.loads(debit_note)
-            amount_exact_str = debit_note["totalAmountDue"]
-
-            dump_next_info("debit_note.json", json.dumps(debit_note, indent=4))
-
-            # Check if DebitNote is for Agreement and Activity that we created.
-            # On this endpoint we could get DebitNotes for all Agreements created using
-            # the same identity.
-            if debit_note["agreementId"] != agreement:
-                logger.error(f"DebitNote for wrong agreement: {debit_note['agreementId']}")
-                continue
-            if debit_note["activityId"] != activity:
-                logger.error(f"DebitNote for wrong activity: {debit_note['activityId']}")
-                continue
-
-            # Check if DebitNote is for correct usage vector.
-            usage_counter = debit_note["usageCounterVector"]
-            if len(usage_counter) != len(usage_vector):
-                logger.error("Invalid usage vector length in debit note")
-                continue
-
-            usage_dict = {}
-            for i in range(len(usage_counter)):
-                usage_dict[usage_vector[i]] = usage_counter[i]
-
-            per_sec_price = float(pricing['golem.usage.duration_sec'])
-            seconds_elapsed = float(usage_dict['golem.usage.duration_sec'])
-            logger.info(f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
-
-            per_mb_price_in = float(pricing['golem.usage.network.in-mib'])
-            mb_in = float(usage_dict['golem.usage.network.in-mib'])
-            logger.info(f"Incoming per MiB( total({mb_in * per_mb_price_in}) used: {mb_in}MiB price: {per_mb_price_in}")
-
-            per_mb_price_out = float(pricing['golem.usage.network.out-mib'])
-            mb_out = float(usage_dict['golem.usage.network.out-mib'])
-            logger.info(f"Outgoing per MiB( total({mb_out * per_mb_price_out}) used: {mb_out}MiB price: {per_mb_price_out}")
-
-            total_price = per_sec_price * seconds_elapsed + per_mb_price_in * mb_in + per_mb_price_out * mb_out
-
-            if float(amount_exact_str) > 0.0:
-                relative_difference = total_price / float(amount_exact_str)
-                absolute_difference = abs(total_price - float(amount_exact_str))
-                if 0.9999 < relative_difference < 1.0001 or absolute_difference < 1.0E-12:
-                    logger.info("Debit note amount matches usage {} equal or almost equal {}".format(total_price, amount_exact_str))
-                else:
-                    logger.error("Debit note amount does not match usage {} not equal {}".format(total_price, amount_exact_str))
-                    continue
-
-            acceptance = {
-                "totalAmountAccepted": amount_exact_str,
-                "allocationId": allocation_id,
-            }
-
-            # Accepting DebitNotes means, that we agree to pay amount specified in this DebitNote.
-            # If we don't agree to pay, we should immediately reject DebitNote and break Agreement.
-            # Anyway if we don't accept DebitNotes, then Provider will break Agreement himself.
-            # In general, it is better to accept DebitNotes, otherwise Providers may not want to
-            # cooperate with us.
-            await send_request(f"{API_URL}/payment-api/v1/debitNotes/{debit_note_id}/accept", method="post",
-                               data=json.dumps(acceptance))
-
-            logger.info(
-                "Debit note %s (amount: %s) accepted",
-                debit_note_id,
-                amount_exact_str,
-            )
+            await process_debit_note(debit_note, runtime_type, agreement, activity, allocation_id, pricing, usage_vector)
 
 
 async def pay_invoices(agreement, allocation_id, timeout):
@@ -656,7 +686,7 @@ async def main():
         # Provider will start sending DebitNotes in intervals.
         # We need background task, that will validate and accept them to sustain the Agreement.
         if not ignore_payments:
-            asyncio.create_task(accept_debit_notes(agreement_id, activity_id, allocation_id, pricing, usage_vector))
+            asyncio.create_task(accept_debit_notes(runtime_type, agreement_id, activity_id, allocation_id, pricing, usage_vector))
 
         (network, local_ip, ip_remote) = await create_network()
         net_id = network["id"]
@@ -681,6 +711,20 @@ async def main():
             },
             {
                 "start": {}
+            },
+            {
+                "run": {
+                    "entry_point": "/bin/ping",
+                    "args": ["-c", "1", "127.0.0.1"],
+                    "capture": {
+                        "stdout": {
+                            "stream": {},
+                        },
+                        "stderr": {
+                            "stream": {}
+                        }
+                    }
+                }
             }
         ]
 
