@@ -24,7 +24,6 @@ COPY install_vm_from_release_tag.sh .
 ARG RUNTIME_VM_RELEASE_TAG
 RUN /bin/bash install_vm_from_release_tag.sh ${RUNTIME_VM_RELEASE_TAG}
 
-COPY ya-provider /root/.local/share/ya-provider
 COPY ya-runtime-outbound /root/.local/share/ya-runtime-outbound
 
 COPY *.py .

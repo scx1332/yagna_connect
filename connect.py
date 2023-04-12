@@ -595,37 +595,9 @@ async def pay_invoices(agreement, allocation_id, timeout):
             return
 
 
-async def main():
-    parser = argparse.ArgumentParser(
-        prog='ConnectVPN',
-        description='Simple demo script for outbound VPN activity')
-    parser.add_argument('--key', help='API key', required=True)
-    parser.add_argument('--subnet', help='Subnet', required=True)
-    parser.add_argument('--autoconnect', help='Autoconnect', action='store_true')
-    parser.add_argument('--debug-ignore-payments', help='Ignore payments', action='store_true')
-    global bearer_token
-    bearer_token = parser.parse_args().key
-    global SUBNET
-    SUBNET = parser.parse_args().subnet
-    ignore_payments = parser.parse_args().debug_ignore_payments
-    if ignore_payments:
-        logger.warning(f"Payments ignored: {ignore_payments}. This is not proper way to use yagna, only for DEBUGGING.")
-
-    autoconnect = parser.parse_args().autoconnect
-    await prepare_tmp_directory()
-
-    me_data = await send_request(f"{API_URL}/me")
-    logger.info(f"Identity information: {me_data}")
-    me_data = json.loads(me_data)
-    sender_address = me_data["identity"]
-
-    # We need to reserve money for future payments.
-    if not ignore_payments:
-        allocation_id = await create_allocation("erc20-rinkeby-tglm", sender_address, 10)
-
+async def process(runtime_type, sender_address, autoconnect, ignore_payments, allocation_id):
     # To compute anything, we need to sign Agreement with at least one Provider.
     # This function implements whole negotiations process and returns negotiated Agreement.
-    runtime_type = "vm"
     agreement_id = await negotiate_agreement(sender_address, runtime_type)
     logger.info(f"Agreement id successfully negotiated: {agreement_id}")
 
@@ -691,6 +663,15 @@ async def main():
         (network, local_ip, ip_remote) = await create_network()
         net_id = network["id"]
 
+        capture = {
+            "stdout": {
+                "stream": {},
+            },
+            "stderr": {
+                "stream": {}
+            }
+        }
+
         # Activity is created, now we need to start ExeUnit Runtime and initialize it.
         # We do this by sending `Deploy` and `Start` commands. In `Deploy` command we specify
         # network configuration.
@@ -711,22 +692,34 @@ async def main():
             },
             {
                 "start": {}
-            },
-            {
-                "run": {
-                    "entry_point": "/bin/ping",
-                    "args": ["-c", "1", "127.0.0.1"],
-                    "capture": {
-                        "stdout": {
-                            "stream": {},
-                        },
-                        "stderr": {
-                            "stream": {}
-                        }
-                    }
-                }
             }
         ]
+        if runtime_type == "vm":
+            commands.append(
+                {
+                    "run": {
+                        "entry_point": "/bin/ping",
+                        "args": ["-c", "1", "127.0.0.1"],
+                        "capture": capture
+                    }
+                })
+            commands.append(
+                {
+                    "run": {
+                        "entry_point": "/sbin/ip",
+                        "args": ["link"],
+                        "capture": capture
+                    }
+                })
+            commands.append(
+                {
+                    "run": {
+                        "entry_point": "/sbin/ifconfig",
+                        "args": [],
+                        "capture": capture
+                    }
+                }
+            )
 
         str = json.dumps(commands)
         exec_command = {
@@ -766,7 +759,7 @@ async def main():
         # wait
         # print("Waiting for 50 seconds")
         # await asyncio.sleep(50)
-        if 1:
+        if runtime_type == "outbound":
 
             ip_local = local_ip[0]["ip"].split("/")[0]
             ws_url = f"{API_URL_WEBSOCKETS}/net-api/v2/vpn/net/{net_id}/raw/from/{ip_local}/to/{ip_remote}"
@@ -843,6 +836,37 @@ async def main():
         if not ignore_payments:
             await release_allocation(allocation_id)
 
+
+async def main():
+    parser = argparse.ArgumentParser(
+        prog='ConnectVPN',
+        description='Simple demo script for outbound VPN activity')
+    parser.add_argument('--key', help='API key', required=True)
+    parser.add_argument('--subnet', help='Subnet', required=True)
+    parser.add_argument('--autoconnect', help='Autoconnect', action='store_true')
+    parser.add_argument('--debug-ignore-payments', help='Ignore payments', action='store_true')
+    global bearer_token
+    bearer_token = parser.parse_args().key
+    global SUBNET
+    SUBNET = parser.parse_args().subnet
+    ignore_payments = parser.parse_args().debug_ignore_payments
+    if ignore_payments:
+        logger.warning(f"Payments ignored: {ignore_payments}. This is not proper way to use yagna, only for DEBUGGING.")
+
+    autoconnect = parser.parse_args().autoconnect
+    await prepare_tmp_directory()
+
+    me_data = await send_request(f"{API_URL}/me")
+    logger.info(f"Identity information: {me_data}")
+    me_data = json.loads(me_data)
+    sender_address = me_data["identity"]
+
+    # We need to reserve money for future payments.
+    if not ignore_payments:
+        allocation_id = await create_allocation("erc20-rinkeby-tglm", sender_address, 10)
+
+    await process("outbound", sender_address, autoconnect, ignore_payments, allocation_id)
+    await process("vm", sender_address, autoconnect, ignore_payments, allocation_id)
 
 if __name__ == "__main__":
     if platform.system() == 'Windows':

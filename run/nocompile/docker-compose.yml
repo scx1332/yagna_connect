@@ -4,7 +4,7 @@ services:
       dockerfile: Dockerfile
       context: ../../centralnet
     command: ./run_centralnet.sh
-  prov1:
+  prov-vm:
     build:
       dockerfile: Dockerfile
       context: ../../provider
@@ -15,6 +15,27 @@ services:
     env_file:
       - yagna_config.env
       - prov1.env
+    environment:
+      - PROVIDER_ENABLE_VM=true
+    command: ./run_provider.sh
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+      - /dev/kvm:/dev/kvm
+  prov-out:
+    build:
+      dockerfile: Dockerfile
+      context: ../../provider
+      args:
+        - YAGNA_RELEASE_TAG=${YAGNA_RELEASE_TAG:-pre-rel-v0.13.0-raw-rc4}
+        - RUNTIME_OUTBOUND_RELEASE_TAG=${RUNTIME_OUTBOUND_RELEASE_TAG:-v0.3.5}
+        - RUNTIME_VM_RELEASE_TAG=${RUNTIME_VM_RELEASE_TAG:-NO_INSTALL}
+    env_file:
+      - yagna_config.env
+      - prov2.env
+    environment:
+      - PROVIDER_ENABLE_OUTBOUND=true
     command: ./run_provider.sh
     cap_add:
       - NET_ADMIN
