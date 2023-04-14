@@ -288,11 +288,10 @@ async def create_network():
     # Here we will create new virtual network. Thanks to this Requestor and Providers
     # will be able to communicate with each other using standard networking protocols (UDP, TCP).
     # This step doesn't require signed Agreement, so it could be done anywhere in the code.
-    ip_remote = "192.168.8.7"
     new_network = {
         "ip": "192.168.8.0/24",
         "mask": "255.255.255.0",
-        "gateway": ip_remote
+        "gateway": "192.168.8.9"
     }
     # This call creates virtual network.
     net_response = await send_request(f"{API_URL}/net-api/v2/vpn/net", method="post", data=json.dumps(new_network))
@@ -315,7 +314,7 @@ async def create_network():
         logger.error(f"Unexpected local ip {ip_local}")
         raise Exception("Unexpected local ip {ip_local}")
 
-    return net_response, ip_local, ip_remote
+    return net_response, ip_local
 
 
 async def remove_network(network_id):
@@ -517,6 +516,11 @@ async def accept_debit_notes(runtime_type, agreement, activity, allocation_id, p
             # DebitNote, so let's query full DebitNote content.
             debit_note = await send_request(f"{API_URL}/payment-api/v1/debitNotes/{debit_note_id}")
             debit_note = json.loads(debit_note)
+            if debit_note["agreementId"] != agreement:
+                continue
+            if debit_note["activityId"] != activity:
+                continue
+
             await process_debit_note(debit_note, runtime_type, agreement, activity, allocation_id, pricing, usage_vector)
 
 
@@ -595,7 +599,25 @@ async def pay_invoices(agreement, allocation_id, timeout):
             return
 
 
-async def process(runtime_type, sender_address, autoconnect, ignore_payments, allocation_id):
+async def run_batch(commands, activity_id):
+    str = json.dumps(commands)
+    exec_command = {
+        "text": str
+    }
+    dump_next_info("exec_command.json", json.dumps(exec_command, indent=4))
+
+    # Execute commands in the context of created activity.
+    response_exec = await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post",
+                                       data=json.dumps(exec_command))
+    response_batch_id = response_exec.replace('"', '')
+    logger.info(f"Exec batch id: {response_batch_id}")
+
+    # Let's wait until initialization of ExeUnit will be finished.
+    await wait_for_batch_finish(activity_id, response_batch_id)
+
+
+async def process(runtime_type, sender_address, autoconnect, ignore_payments, allocation_id,
+                  network, local_ip, ip_remote, run_batches):
     # To compute anything, we need to sign Agreement with at least one Provider.
     # This function implements whole negotiations process and returns negotiated Agreement.
     agreement_id = await negotiate_agreement(sender_address, runtime_type)
@@ -660,8 +682,24 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
         if not ignore_payments:
             asyncio.create_task(accept_debit_notes(runtime_type, agreement_id, activity_id, allocation_id, pricing, usage_vector))
 
-        (network, local_ip, ip_remote) = await create_network()
+
         net_id = network["id"]
+        assign_output = {
+            "id": provider_id,
+            "ip": ip_remote
+        }
+        logger.info(f"Assigning output to {net_id}")
+        await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes", method="post",
+                           data=json.dumps(assign_output))
+
+        nodes = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes")
+        nodes = json.loads(nodes)
+        nodes2 = dict()
+        nodes2["192.168.8.1"] = "0x295abc784F0CEC688Ed5503514eb27C922ad1384"
+        for node in nodes:
+            nodes2[node['ip']] = node['id']
+
+        logger.info(f"Nodes: {nodes}")
 
         capture = {
             "stdout": {
@@ -685,7 +723,8 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                             "mask": network["mask"],
                             # Since we are initializing outbound gateway runtime we assign it
                             # the same address as for default network gateway.
-                            "nodeIp": network["gateway"]
+                            "nodeIp": ip_remote,
+                            "nodes": nodes2
                         }
                     ]
                 }
@@ -694,7 +733,30 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                 "start": {}
             }
         ]
-        if runtime_type == "vm":
+
+        await run_batch(commands, activity_id)
+
+
+
+
+        if runtime_type == "vm" and run_batches:
+            commands = []
+            commands.append(
+                {
+                    "run": {
+                        "entry_point": "/sbin/arp",
+                        "args": ["-s", "192.168.8.9", "0a:13:c0:a8:08:09"],
+                        "capture": capture
+                    }
+                })
+            commands.append(
+                {
+                    "run": {
+                        "entry_point": "/sbin/arp",
+                        "args": ["-a", "-n"],
+                        "capture": capture
+                    }
+                })
             commands.append(
                 {
                     "run": {
@@ -707,7 +769,15 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                 {
                     "run": {
                         "entry_point": "/sbin/ip",
-                        "args": ["link"],
+                        "args": ["route", "add", "default", "via", "192.168.8.9", "dev", "eth0"],
+                        "capture": capture
+                    }
+                })
+            commands.append(
+                {
+                    "run": {
+                        "entry_point": "/sbin/ip",
+                        "args": ["route"],
                         "capture": capture
                     }
                 })
@@ -720,42 +790,37 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                     }
                 }
             )
+            if 1:
+                commands.append(
+                    {
+                        "run": {
+                            "entry_point": "/bin/ping",
+                            "args": ["-c", "1", "192.168.8.7"],
+                            "capture": capture
+                        }
+                    }
+                )
+                commands.append(
+                    {
+                        "run": {
+                            "entry_point": "/bin/ping",
+                            "args": ["-c", "1", "192.168.8.9"],
+                            "capture": capture
+                        }
+                    }
+                )
+                commands.append(
+                    {
+                        "run": {
+                            "entry_point": "/bin/ping",
+                            "args": ["-c", "1", "8.8.8.8"],
+                            "capture": capture
+                        }
+                    }
+                )
+            await run_batch(commands, activity_id)
 
-        str = json.dumps(commands)
-        exec_command = {
-            "text": str
-        }
-        logger.info(f"Deploying network on provider {net_id}")
-        dump_next_info("exec_command.json", json.dumps(exec_command, indent=4))
 
-        # Execute commands in the context of created activity.
-        response_exec = await send_request(f"{API_URL}/activity-api/v1/activity/{activity_id}/exec", method="post",
-                                           data=json.dumps(exec_command))
-        response_batch_id = response_exec.replace('"', '')
-        logger.info(f"Exec batch id: {response_batch_id}")
-
-        # Let's wait until initialization of ExeUnit will be finished.
-        await wait_for_batch_finish(activity_id, response_batch_id)
-
-        # To use VPN on our Provider we have to assign IP address to it.
-
-        assign_output = {
-            "id": provider_id,
-            "ip": ip_remote
-        }
-        logger.info(f"Assigning output to {net_id}")
-        await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes", method="post",
-                           data=json.dumps(assign_output))
-
-        nodes = await send_request(f"{API_URL}/net-api/v2/vpn/net/{net_id}/nodes")
-        nodes = json.loads(nodes)
-        logger.info(f"Nodes: {nodes}")
-
-        remote_port = 22
-
-        headers = {
-            "Content-Type": "application/json",
-        }
         # wait
         # print("Waiting for 50 seconds")
         # await asyncio.sleep(50)
@@ -802,6 +867,12 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                         packet_back_hex = packet_back.hex()
                         logger.info(f"Got packet back: {packet_back_hex}")
                         await asyncio.sleep(1)
+        elif runtime_type == "vm":
+            print("Waiting in loop")
+            while True:
+                await asyncio.sleep(0.5)
+        else:
+            raise Exception("Unknown runtime type")
 
         # todo websocket
         # aiohttp.ClientSession()
@@ -829,12 +900,12 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
 
         # Release allocation made on the beginning, for funds to be available in other application runs.
         # Allocation will be release automatically after timeout, if we forget about this.
-        await remove_network(net_id)
         if not ignore_payments:
             await payments
 
         if not ignore_payments:
             await release_allocation(allocation_id)
+
 
 
 async def main():
@@ -864,9 +935,26 @@ async def main():
     # We need to reserve money for future payments.
     if not ignore_payments:
         allocation_id = await create_allocation("erc20-rinkeby-tglm", sender_address, 10)
+    else:
+        allocation_id = None
 
-    await process("outbound", sender_address, autoconnect, ignore_payments, allocation_id)
-    await process("vm", sender_address, autoconnect, ignore_payments, allocation_id)
+
+    (network, local_ip) = await create_network()
+    machine_1 = "192.168.8.9"
+    machine_2 = "192.168.8.7"
+
+    #task = asyncio.create_task(process("outbound", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_1, False))
+    try:
+        task_1 = asyncio.create_task(process("outbound", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_1, False))
+        # task_1 = asyncio.create_task(process("vm", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_1, False))
+        await asyncio.sleep(10)
+        task_2 = asyncio.create_task(process("vm", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_2, True))
+
+        await task_1
+        await task_2
+    finally:
+        await remove_network(network["id"])
+
 
 if __name__ == "__main__":
     if platform.system() == 'Windows':

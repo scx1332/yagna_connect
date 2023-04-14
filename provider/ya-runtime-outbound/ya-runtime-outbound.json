@@ -2,5 +2,7 @@
     "outboundInterface": "eth0",
     "applyIptablesRules": true,
     "allowPacketsToLocal": true,
-    "printPacketErrors": true
+    "printPacketErrors": true,
+    "debugLogAllPackets": true,
+    "interfaceMtu": null
 }
