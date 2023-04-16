@@ -744,22 +744,6 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
             commands.append(
                 {
                     "run": {
-                        "entry_point": "/sbin/arp",
-                        "args": ["-s", "192.168.8.9", "0a:13:c0:a8:08:09"],
-                        "capture": capture
-                    }
-                })
-            commands.append(
-                {
-                    "run": {
-                        "entry_point": "/sbin/arp",
-                        "args": ["-a", "-n"],
-                        "capture": capture
-                    }
-                })
-            commands.append(
-                {
-                    "run": {
                         "entry_point": "/bin/ping",
                         "args": ["-c", "1", "127.0.0.1"],
                         "capture": capture

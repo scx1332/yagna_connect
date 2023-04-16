@@ -8,7 +8,7 @@ services:
     command: ./run_centralnet.sh
   prov-vm1:
     build:
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile_FromSource
       context: ../../provider
       args:
         - YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=${YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN:-1}
@@ -48,6 +48,8 @@ services:
     env_file:
       - yagna_config.env
       - prov2.env
+    environment:
+      - PROVIDER_ENABLE_OUTBOUND=true
     command: ./run_provider.sh
     cap_add:
       - NET_ADMIN

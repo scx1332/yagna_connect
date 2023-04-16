@@ -17,6 +17,8 @@ ARG YA_RUNTIME_OUTBOUND_GIT_CLONE_CACHE_TOKEN=3fd595e0-5778-4075-9997-cf87453ef6
 ARG YA_RUNTIME_OUTBOUND_BUILD_TOKEN=e4710e60-c8ca-443d-9d7a-6962fc9b8442
 # branch
 ARG YA_RUNTIME_OUTBOUND_BRANCH=master
+# version of runtime to be installed
+ARG RUNTIME_VM_RELEASE_TAG=v0.3.0
 
 FROM rust as ya-runtime-outbound
 RUN apt-get update
@@ -29,6 +31,7 @@ RUN cargo build --release -p ya-runtime-outbound
 ARG YA_RUNTIME_OUTBOUND_BUILD_TOKEN
 RUN echo ${YA_RUNTIME_OUTBOUND_BUILD_TOKEN} && git pull
 RUN cargo build --release -p ya-runtime-outbound
+
 
 
 
@@ -71,6 +74,12 @@ RUN apt-get install -y curl vim jq net-tools htop iptables build-essential iputi
 RUN pip install quart requests websockets scapy aiohttp
 
 
+WORKDIR /yagna_install
+COPY install_vm_from_release_tag.sh .
+ARG RUNTIME_VM_RELEASE_TAG
+RUN /bin/bash install_vm_from_release_tag.sh ${RUNTIME_VM_RELEASE_TAG}
+
+
 WORKDIR /yagna
 RUN wget https://github.com/golemfactory/yagna/releases/download/v0.12.0/golem-provider-linux-v0.12.0.tar.gz -O - | tar -xz && mv golem-provider-linux-v0.12.0 golem-binaries
 
@@ -80,7 +89,6 @@ COPY --from=yagna-build /build/ya-provider /usr/bin
 COPY --from=yagna-build /build/golemsp /usr/bin
 COPY --from=yagna-build /build/exe-unit /root/.local/lib/yagna/plugins/exe-unit
 
-COPY ya-provider /root/.local/share/ya-provider
 COPY ya-runtime-outbound /root/.local/share/ya-runtime-outbound
 
 COPY --from=ya-runtime-outbound /ya-runtime-outbound/target/release/ya-runtime-outbound /root/.local/lib/yagna/plugins/ya-runtime-outbound/ya-runtime-outbound
