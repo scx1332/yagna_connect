@@ -413,7 +413,6 @@ async def process_debit_note(debit_note, runtime_type, agreement, activity, allo
         logger.error("Invalid usage vector length in debit note")
         raise Exception("Invalid usage vector length in debit note")
 
-
     usage_dict = {}
     for i in range(len(usage_counter)):
         usage_dict[usage_vector[i]] = usage_counter[i]
@@ -422,7 +421,8 @@ async def process_debit_note(debit_note, runtime_type, agreement, activity, allo
     if runtime_type == "outbound":
         per_sec_price = float(pricing['golem.usage.duration_sec'])
         seconds_elapsed = float(usage_dict['golem.usage.duration_sec'])
-        logger.info(f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
+        logger.info(
+            f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
 
         per_mb_price_in = float(pricing['golem.usage.network.in-mib'])
         mb_in = float(usage_dict['golem.usage.network.in-mib'])
@@ -436,7 +436,8 @@ async def process_debit_note(debit_note, runtime_type, agreement, activity, allo
     elif runtime_type == "vm":
         per_sec_price = float(pricing['golem.usage.duration_sec'])
         seconds_elapsed = float(usage_dict['golem.usage.duration_sec'])
-        logger.info(f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
+        logger.info(
+            f"Per second( total({per_sec_price * seconds_elapsed}) elapsed: {seconds_elapsed}s price: {per_sec_price}")
 
         per_cpu_price = float(pricing['golem.usage.cpu_sec'])
         cpu_secs = float(usage_dict['golem.usage.cpu_sec'])
@@ -450,10 +451,12 @@ async def process_debit_note(debit_note, runtime_type, agreement, activity, allo
         relative_difference = total_price / float(amount_exact_str)
         absolute_difference = abs(total_price - float(amount_exact_str))
         if 0.9999 < relative_difference < 1.0001 or absolute_difference < 1.0E-12:
-            logger.info("Debit note amount matches usage {} equal or almost equal {}".format(total_price, amount_exact_str))
+            logger.info(
+                "Debit note amount matches usage {} equal or almost equal {}".format(total_price, amount_exact_str))
         else:
             logger.error("Debit note amount does not match usage {} not equal {}".format(total_price, amount_exact_str))
-            raise Exception("Debit note amount does not match usage {} not equal {}".format(total_price, amount_exact_str))
+            raise Exception(
+                "Debit note amount does not match usage {} not equal {}".format(total_price, amount_exact_str))
 
     acceptance = {
         "totalAmountAccepted": amount_exact_str,
@@ -473,8 +476,6 @@ async def process_debit_note(debit_note, runtime_type, agreement, activity, allo
         debit_note_id,
         amount_exact_str,
     )
-
-
 
 
 async def accept_debit_notes(runtime_type, agreement, activity, allocation_id, pricing, usage_vector):
@@ -521,7 +522,8 @@ async def accept_debit_notes(runtime_type, agreement, activity, allocation_id, p
             if debit_note["activityId"] != activity:
                 continue
 
-            await process_debit_note(debit_note, runtime_type, agreement, activity, allocation_id, pricing, usage_vector)
+            await process_debit_note(debit_note, runtime_type, agreement, activity, allocation_id, pricing,
+                                     usage_vector)
 
 
 async def pay_invoices(agreement, allocation_id, timeout):
@@ -662,7 +664,6 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
         else:
             raise Exception(f"Unknown runtime type: {runtime_type}")
 
-
         # Computations are done in the context of Activity, so we need to create one.
         # Single Agreement can have multiple activities created after each other.
         # Creating new activity will give you clear state of the ExeUnit Runtime.
@@ -680,8 +681,8 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
         # Provider will start sending DebitNotes in intervals.
         # We need background task, that will validate and accept them to sustain the Agreement.
         if not ignore_payments:
-            asyncio.create_task(accept_debit_notes(runtime_type, agreement_id, activity_id, allocation_id, pricing, usage_vector))
-
+            asyncio.create_task(
+                accept_debit_notes(runtime_type, agreement_id, activity_id, allocation_id, pricing, usage_vector))
 
         net_id = network["id"]
         assign_output = {
@@ -721,6 +722,7 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                             "id": network["id"],
                             "ip": network["ip"],
                             "mask": network["mask"],
+                            "gateway": network["gateway"],
                             # Since we are initializing outbound gateway runtime we assign it
                             # the same address as for default network gateway.
                             "nodeIp": ip_remote,
@@ -749,14 +751,7 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                         "capture": capture
                     }
                 })
-            commands.append(
-                {
-                    "run": {
-                        "entry_point": "/sbin/ip",
-                        "args": ["route", "add", "default", "via", "192.168.8.9", "dev", "eth0"],
-                        "capture": capture
-                    }
-                })
+
             commands.append(
                 {
                     "run": {
@@ -804,7 +799,6 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                 )
             await run_batch(commands, activity_id)
 
-
         # wait
         # print("Waiting for 50 seconds")
         # await asyncio.sleep(50)
@@ -837,9 +831,9 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
                                               extra_headers=[('Authorization', f'Bearer {bearer_token}')]) as websocket:
                     logger.info(f"Connected to websocket")
                     while True:
-                        #packet = Ether(dst=100000, src=2332)/IP(src=ip_local, dst=ip_remote)/UDP(sport=1000,
+                        # packet = Ether(dst=100000, src=2332)/IP(src=ip_local, dst=ip_remote)/UDP(sport=1000,
                         #      dport=5000)/Raw(load="Hello World")
-                        packet = Ether(dst=100000, src=2332)/IP(dst="192.168.8.7", ttl=20)/ICMP()
+                        packet = Ether(dst=100000, src=2332) / IP(dst="192.168.8.7", ttl=20) / ICMP()
                         packet_raw = scapy.compat.raw(packet)
                         packet.show()
                         packet_hex = packet_raw.hex()
@@ -891,7 +885,6 @@ async def process(runtime_type, sender_address, autoconnect, ignore_payments, al
             await release_allocation(allocation_id)
 
 
-
 async def main():
     parser = argparse.ArgumentParser(
         prog='ConnectVPN',
@@ -922,17 +915,20 @@ async def main():
     else:
         allocation_id = None
 
-
     (network, local_ip) = await create_network()
     machine_1 = "192.168.8.9"
     machine_2 = "192.168.8.7"
 
-    #task = asyncio.create_task(process("outbound", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_1, False))
+    # task = asyncio.create_task(process("outbound", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_1, False))
     try:
-        task_1 = asyncio.create_task(process("outbound", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_1, False))
+        task_1 = asyncio.create_task(
+            process("outbound", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip,
+                    machine_1, False))
         # task_1 = asyncio.create_task(process("vm", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_1, False))
         await asyncio.sleep(10)
-        task_2 = asyncio.create_task(process("vm", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_2, True))
+        task_2 = asyncio.create_task(
+            process("vm", sender_address, autoconnect, ignore_payments, allocation_id, network, local_ip, machine_2,
+                    True))
 
         await task_1
         await task_2

@@ -20,6 +20,7 @@ services:
         - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
         - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
         - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+        - RUNTIME_VM_RELEASE_TAG=${RUNTIME_VM_RELEASE_TAG:-v0.3.0}
     env_file:
       - yagna_config.env
       - prov1.env
@@ -45,6 +46,7 @@ services:
         - YAGNA_BUILD_PROFILE=${YAGNA_BUILD_PROFILE:-release}
         - YAGNA_BUILD_TARGET=${YAGNA_BUILD_TARGET:-x86_64-unknown-linux-musl}
         - YAGNA_FEATURES=${YAGNA_FEATURES:-static-openssl}
+        - RUNTIME_VM_RELEASE_TAG=${RUNTIME_VM_RELEASE_TAG:-v0.3.0}
     env_file:
       - yagna_config.env
       - prov2.env
