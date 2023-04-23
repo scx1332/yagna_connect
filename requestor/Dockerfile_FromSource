@@ -11,6 +11,8 @@ ARG YAGNA_BUILD_PROFILE=release
 ARG YAGNA_BUILD_TARGET=x86_64-unknown-linux-musl
 # yagna additional features
 ARG YAGNA_FEATURES=static-openssl
+# version of yaftp to be installed
+ARG YAFTP_RELEASE_TAG=v0.3.10
 
 ARG YA_VPN_CONNECTOR_GIT_CLONE_CACHE_TOKEN=1
 ARG YA_VPN_CONNECTOR_BRANCH=main
@@ -55,10 +57,17 @@ RUN apt-get install -y curl vim jq net-tools htop iptables build-essential iputi
 RUN pip install quart requests websockets scapy aiohttp
 
 
+WORKDIR /yagna_install
+
+COPY install_yaftp_from_release_tag.sh .
+ARG YAFTP_RELEASE_TAG
+RUN /bin/bash install_yaftp_from_release_tag.sh ${YAFTP_RELEASE_TAG}
+
 WORKDIR /requestor
 
 WORKDIR /requestor
 COPY --from=yagna-build /build/yagna /usr/bin
+COPY --from=yagna-build /build/gftp /usr/bin
 
 COPY *.py ./
 COPY *.sh ./
