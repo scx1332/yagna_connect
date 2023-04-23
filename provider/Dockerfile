@@ -1,6 +1,7 @@
 ARG YAGNA_RELEASE_TAG=pre-rel-v0.13.0-raw-rc4
 ARG RUNTIME_OUTBOUND_RELEASE_TAG=v0.3.5
 ARG RUNTIME_VM_RELEASE_TAG=v0.3.0
+ARG YAFTP_RELEASE_TAG=v0.3.10
 
 FROM python:3.11
 RUN apt-get update
@@ -23,6 +24,10 @@ RUN /bin/bash install_outbound_from_release_tag.sh ${RUNTIME_OUTBOUND_RELEASE_TA
 COPY install_vm_from_release_tag.sh .
 ARG RUNTIME_VM_RELEASE_TAG
 RUN /bin/bash install_vm_from_release_tag.sh ${RUNTIME_VM_RELEASE_TAG}
+
+COPY install_yaftp_from_release_tag.sh .
+ARG YAFTP_RELEASE_TAG
+RUN /bin/bash install_yaftp_from_release_tag.sh ${YAFTP_RELEASE_TAG}
 
 COPY ya-runtime-outbound /root/.local/share/ya-runtime-outbound
 

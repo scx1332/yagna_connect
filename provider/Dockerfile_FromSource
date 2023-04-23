@@ -19,6 +19,8 @@ ARG YA_RUNTIME_OUTBOUND_BUILD_TOKEN=e4710e60-c8ca-443d-9d7a-6962fc9b8442
 ARG YA_RUNTIME_OUTBOUND_BRANCH=master
 # version of runtime to be installed
 ARG RUNTIME_VM_RELEASE_TAG=v0.3.0
+# version of yaftp to be installed
+ARG YAFTP_RELEASE_TAG=v0.3.10
 
 FROM rust as ya-runtime-outbound
 RUN apt-get update
@@ -79,6 +81,9 @@ COPY install_vm_from_release_tag.sh .
 ARG RUNTIME_VM_RELEASE_TAG
 RUN /bin/bash install_vm_from_release_tag.sh ${RUNTIME_VM_RELEASE_TAG}
 
+COPY install_yaftp_from_release_tag.sh .
+ARG YAFTP_RELEASE_TAG
+RUN /bin/bash install_yaftp_from_release_tag.sh ${YAFTP_RELEASE_TAG}
 
 WORKDIR /yagna
 RUN wget https://github.com/golemfactory/yagna/releases/download/v0.12.0/golem-provider-linux-v0.12.0.tar.gz -O - | tar -xz && mv golem-provider-linux-v0.12.0 golem-binaries
