@@ -1,0 +1,9 @@
+services:
+  relay:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    command: ./run_relaynet.sh
+    ports:
+      - "10464:7464"
+      - "10465:7465"
